@@ -1,0 +1,22 @@
+decimal package code
+Copyright (c) 2026 Pedro Baltazar
+License: MIT
+
+Vendored third-party code
+=========================
+
+Component: mpdecimal
+Location: src/mpdecimal
+Upstream: https://www.bytereef.org/mpdecimal/
+Copyright (c) 2008-2025 Stefan Krah
+License: BSD 2-Clause
+
+The vendored mpdecimal copyright notice is retained verbatim in
+src/mpdecimal/COPYRIGHT.txt and applies to the files under src/mpdecimal.
+
+Local modifications to the vendored sources (guarded by the MPD_NO_FILE_IO
+macro used in the package build) route mpdecimal's fatal/warning error macros
+and defensive abort() calls through R's error handler, and disable the unused
+debugging functions mpd_fprint()/mpd_print(), so that no compiled code writes
+to stdout/stderr or terminates the R process. The modifications are confined
+to src/mpdecimal/mpdecimal.h and src/mpdecimal/io.c.

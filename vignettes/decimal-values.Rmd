@@ -1,0 +1,101 @@
+---
+title: "Decimal Values"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Decimal Values}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+library(decimal)
+```
+
+`decimal` provides exact, serializable decimal vectors backed by [`mpdecimal`](https://www.bytereef.org/mpdecimal/doc/libmpdec/).
+Values are immutable; arithmetic behavior comes from the active decimal
+context rather than from per-value mutable state.
+
+## Construction
+
+Character and integer inputs are exact:
+
+```{r}
+decimal(c("1.20", "-0", "Infinity", "NaN"))
+decimal(c(1L, 2L, NA_integer_))
+```
+
+Double conversion is explicit and exact. This matters because a binary double
+and a decimal literal are not the same thing:
+
+```{r}
+decimal("0.1")
+as_decimal(0.1)
+```
+
+If you want decimal `0.1`, write `decimal("0.1")`.
+
+## Vector behavior
+
+Decimal values are `vctrs` vectors. They combine with integers, but they do
+not implicitly combine with doubles or character vectors:
+
+```{r}
+vctrs::vec_c(decimal("1.20"), 2L, NA)
+```
+
+```{r, error = TRUE}
+vctrs::vec_c(decimal("1.20"), 0.5)
+```
+
+## Special values
+
+`decimal` distinguishes R missing values from decimal NaNs:
+
+```{r}
+x <- decimal(c(NA_character_, "NaN", "sNaN", "Infinity", "-0"))
+x
+is.na(x)
+is.nan(x)
+number_class(x)
+```
+
+- `NA` is an R missing value.
+- `NaN` and `sNaN` are decimal NaNs.
+- formatting preserves signed zero.
+
+## Arithmetic and summaries
+
+Arithmetic is vectorized and significance is preserved in the result:
+
+```{r}
+decimal("1.20") + decimal("2.3")
+sum(decimal(c("1.20", "2.30", "3.40")))
+mean(decimal(c("1", "2", "3")))
+```
+
+Some operations differ from base R because they follow decimal semantics:
+
+```{r}
+decimal("-7") %% decimal("4")
+decimal("-7") %/% decimal("4")
+```
+
+The quotient truncates toward zero and the remainder has the dividend's sign.
+
+## Decimal-specific helpers
+
+```{r}
+quantize(decimal("1.2345"), decimal("0.01"))
+normalize(decimal(c("1.2300", "-0.00")))
+fma(decimal("2"), decimal("3"), decimal("4"))
+same_quantum(decimal("1.20"), decimal("2.30"))
+adjusted(decimal(c("1.2300", "1E-3")))
+```
+
+## Compatibility boundary
+
+Version 0.1.0 implements the core workflow: exact values, contexts,
+arithmetic, comparison, summaries, and special-value handling. Some advanced
+Python `decimal` features remain deferred, especially total-order APIs and the
+larger toolbox of representational operations.

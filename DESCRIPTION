@@ -1,0 +1,49 @@
+Package: decimal
+Title: Arbitrary-Precision Decimal Vectors for R
+Version: 0.1.0
+Authors@R:
+    c(
+      person(
+        "Pedro", "Baltazar",
+        email = "pedrobtz@gmail.com",
+        role = c("aut", "cre", "cph")
+      ),
+      person(
+        "Stefan", "Krah",
+        role = c("ctb", "cph"),
+        comment = "Vendored 'mpdecimal' library in src/mpdecimal; see inst/COPYRIGHTS."
+      )
+    )
+Description: Provides arbitrary-precision decimal vectors backed by the
+    vendored 'mpdecimal' C library. Values are exact and serializable,
+    arithmetic is controlled by an explicit decimal context, and vectors are
+    integrated with 'vctrs' so they behave naturally in data frames, tibbles,
+    summaries, and common numeric workflows. Version 0.1.0 is a correctness-
+    first release focused on exact construction, context-aware arithmetic,
+    comparison, summaries, and special-value handling.
+License: MIT + file LICENSE
+Language: en-US
+URL: https://github.com/pedrobtz/decimal
+BugReports: https://github.com/pedrobtz/decimal/issues
+Depends:
+    R (>= 4.1.0)
+Imports:
+    methods,
+    rlang,
+    vctrs,
+    withr
+Suggests:
+    covr,
+    knitr,
+    pillar,
+    rmarkdown,
+    tibble,
+    testthat (>= 3.0.0)
+VignetteBuilder: knitr
+Config/testthat/edition: 3
+Config/Needs/documentation:
+    roxygen2
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+NeedsCompilation: yes

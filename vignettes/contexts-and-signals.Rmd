@@ -1,0 +1,113 @@
+---
+title: "Contexts and Signals"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Contexts and Signals}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+library(decimal)
+```
+
+`decimal` separates immutable values from the active arithmetic context.
+Construction is exact; arithmetic and context-sensitive operations are where
+precision, rounding, traps, and sticky flags apply.
+
+## The default context
+
+```{r}
+get_decimal_context()
+```
+
+The defaults mirror Python's `decimal` defaults:
+
+- precision 28
+- round half even
+- `Emin = -999999`
+- `Emax = 999999`
+- traps for invalid operation, division by zero, and overflow
+
+## Temporary contexts
+
+Use `with_decimal_context()` or `local_decimal_context()` to scope changes:
+
+```{r}
+ctx <- decimal_context(precision = 2L, traps = character())
+
+with_decimal_context(ctx, decimal("1.25") + decimal("0"))
+get_decimal_context()
+```
+
+The active context is restored automatically.
+
+## Rounding and sticky flags
+
+When traps are disabled, signals are recorded in the sticky flags:
+
+```{r}
+old <- get_decimal_context()
+set_decimal_context(decimal_context(precision = 2L, traps = character()))
+clear_decimal_flags()
+
+decimal("1.25") + decimal("0")
+decimal_flags()
+
+set_decimal_context(old)
+```
+
+Sticky flags accumulate until you clear them:
+
+```{r}
+ctx <- decimal_context(precision = 2L, traps = character())
+with_decimal_context(ctx, {
+  clear_decimal_flags()
+  decimal("1.25") + decimal("0")
+  decimal("1") / decimal("8")
+  decimal_flags()
+})
+```
+
+## Traps
+
+If a signal is trapped, the operation raises a classed R error:
+
+```{r, error = TRUE}
+with_decimal_context(decimal_context(traps = "division_by_zero"), {
+  decimal("1") / decimal("0")
+})
+```
+
+This lets calling code handle decimal failures explicitly.
+
+## Classification and predicates
+
+Classification is context-aware for normal versus subnormal values:
+
+```{r}
+ctx <- decimal_context(precision = 3L, emin = -2L)
+with_decimal_context(ctx, {
+  x <- decimal(c("1E-2", "1E-3", "-0", "NaN", "sNaN"))
+  number_class(x)
+})
+```
+
+Useful predicates include:
+
+```{r}
+x <- decimal(c("NaN", "sNaN", "Infinity", "-0", "1E-3"))
+is_qnan(x)
+is_snan(x)
+is_infinite <- is.infinite(x)
+is_zero(x)
+is_signed(x)
+```
+
+## Notes on 0.1.0
+
+The 0.1.0 release is intended for exact decimal workflows in ordinary R code:
+data-frame columns, arithmetic, summaries, and explicit control of rounding
+behavior. It does not yet expose every advanced capability from Python's
+`decimal` module, but the context/signal model is already in place.

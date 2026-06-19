@@ -1,0 +1,14 @@
+^decimal\.Rproj$
+^\.Rproj\.user$
+^\.positai$
+^\.claude$
+^\.github$
+^.*\.tar\.gz$
+^check$
+^decimal\.Rcheck$
+^cran-comments\.md$
+^ROADMAP\.md$
+^src/.*\.(o|so)$
+^_pkgdown\.yml$
+^docs$
+^pkgdown$
