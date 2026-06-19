@@ -3,9 +3,15 @@
 .RData
 *.tar.gz
 check/
+*.o
+*.so
+*.dll
 src/*.o
 src/*.so
 src/*.dll
+src/**/*.o
+src/**/*.so
+src/**/*.dll
 .positai
 docs
 *.pdf
