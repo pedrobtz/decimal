@@ -43,11 +43,10 @@
    PEP-3101 formatting for numeric types. */
 
 
-#if defined(__GNUC__) && !defined(__INTEL_COMPILER) && __GNUC__ >= 7
-  #pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
-  #pragma GCC diagnostic ignored "-Wmisleading-indentation"
-  #pragma GCC diagnostic ignored "-Warray-bounds"
-#endif
+/* Upstream's diagnostic-suppression pragmas (-Wimplicit-fallthrough,
+ * -Wmisleading-indentation, -Warray-bounds) were removed for the R package
+ * build: they trip CRAN's "checking pragmas" warning, and they are not needed
+ * under R's compilation flags (-Wall, without -Wextra). See inst/COPYRIGHTS. */
 
 
 /*

@@ -18,5 +18,9 @@ Local modifications to the vendored sources (guarded by the MPD_NO_FILE_IO
 macro used in the package build) route mpdecimal's fatal/warning error macros
 and defensive abort() calls through R's error handler, and disable the unused
 debugging functions mpd_fprint()/mpd_print(), so that no compiled code writes
-to stdout/stderr or terminates the R process. The modifications are confined
-to src/mpdecimal/mpdecimal.h and src/mpdecimal/io.c.
+to stdout/stderr or terminates the R process. In addition, upstream's
+diagnostic-suppression pragmas (#pragma GCC diagnostic ignored ...) were removed
+from src/mpdecimal/io.c and src/mpdecimal/mpdecimal.c, as they are unnecessary
+under R's compilation flags and trip CRAN's pragma check. The modifications are
+confined to src/mpdecimal/mpdecimal.h, src/mpdecimal/mpdecimal.c, and
+src/mpdecimal/io.c.
