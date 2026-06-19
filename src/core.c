@@ -222,13 +222,20 @@ static void decimal_parse_exact_checked(mpd_t *dec, SEXP x, R_xlen_t index) {
 
 static SEXP decimal_result_list(SEXP values, uint32_t status, uint32_t trap,
                                 int trap_index) {
-  SEXP out = PROTECT(Rf_allocVector(VECSXP, 4));
-  SEXP names = PROTECT(Rf_allocVector(STRSXP, 4));
-  SEXP flags = PROTECT(decimal_signal_names_from_bits(status));
-  const char *trap_name = decimal_first_signal_name(trap);
-  SEXP trap_signal = PROTECT(Rf_ScalarString(
+  SEXP out, names, flags, trap_signal, trap_index_sexp;
+  const char *trap_name;
+
+  /* Callers unprotect `values` before handing it over, so protect it here
+   * before the allocations below can trigger a garbage collection. */
+  PROTECT(values);
+
+  out = PROTECT(Rf_allocVector(VECSXP, 4));
+  names = PROTECT(Rf_allocVector(STRSXP, 4));
+  flags = PROTECT(decimal_signal_names_from_bits(status));
+  trap_name = decimal_first_signal_name(trap);
+  trap_signal = PROTECT(Rf_ScalarString(
       trap_name == NULL ? NA_STRING : Rf_mkChar(trap_name)));
-  SEXP trap_index_sexp =
+  trap_index_sexp =
       PROTECT(Rf_ScalarInteger(trap_index < 0 ? NA_INTEGER : trap_index));
 
   SET_VECTOR_ELT(out, 0, values);
@@ -242,7 +249,7 @@ static SEXP decimal_result_list(SEXP values, uint32_t status, uint32_t trap,
   SET_STRING_ELT(names, 3, Rf_mkChar("trap_index"));
   Rf_setAttrib(out, R_NamesSymbol, names);
 
-  UNPROTECT(5);
+  UNPROTECT(6);
   return out;
 }
 
