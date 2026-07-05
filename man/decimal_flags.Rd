@@ -10,7 +10,11 @@ decimal_flags()
 A character vector of active sticky flags.
 }
 \description{
-Read sticky decimal flags
+Sticky flags accumulate the signals raised by operations that were not
+trapped (see \code{\link[=decimal_context]{decimal_context()}}). They persist until \code{\link[=clear_decimal_flags]{clear_decimal_flags()}}
+is called. By default the same non-trapped signals are also reported as
+warnings as they occur; set \code{options(decimal.report_flags = FALSE)} to
+silence the warnings and inspect flags only through this function.
 }
 \examples{
 decimal_flags()

@@ -10,6 +10,9 @@ vignette: >
 ```{r, include = FALSE}
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
 library(decimal)
+# Non-trapped signals warn by default (see "Reporting signals" below). Silence
+# them here so the flag examples stay focused; the warning is shown on its own.
+options(decimal.report_flags = FALSE)
 ```
 
 `decimal` separates immutable values from the active arithmetic context.
@@ -22,7 +25,7 @@ precision, rounding, traps, and sticky flags apply.
 get_decimal_context()
 ```
 
-The defaults mirror Python's `decimal` defaults:
+The default context uses:
 
 - precision 28
 - round half even
@@ -70,6 +73,31 @@ with_decimal_context(ctx, {
 })
 ```
 
+## Reporting signals
+
+Every signal has one of three dispositions:
+
+- **Trapped** — the operation raises a classed R error (see below).
+- **Reported** — the signal is recorded as a flag *and* surfaced as a warning
+  as it occurs. This is the default for any non-trapped signal.
+- **Silent** — the signal is recorded as a flag only.
+
+By default, non-trapped signals are reported, so ordinary rounding warns:
+
+```{r}
+withr::with_options(
+  list(decimal.report_flags = TRUE),
+  with_decimal_context(
+    decimal_context(precision = 2L, traps = character()),
+    decimal("1.25") + decimal("0")
+  )
+)
+```
+
+The warning is informational; the sticky flags accumulate either way. Set
+`options(decimal.report_flags = FALSE)` to make non-trapped signals silent and
+inspect them through `decimal_flags()` alone, as the examples above do.
+
 ## Traps
 
 If a signal is trapped, the operation raises a classed R error:
@@ -104,10 +132,3 @@ is_infinite <- is.infinite(x)
 is_zero(x)
 is_signed(x)
 ```
-
-## Notes on 0.1.0
-
-The 0.1.0 release is intended for exact decimal workflows in ordinary R code:
-data-frame columns, arithmetic, summaries, and explicit control of rounding
-behavior. It does not yet expose every advanced capability from Python's
-`decimal` module, but the context/signal model is already in place.

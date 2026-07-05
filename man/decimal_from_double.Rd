@@ -4,19 +4,26 @@
 \alias{decimal_from_double}
 \title{Exact conversion from double}
 \usage{
-decimal_from_double(x)
+decimal_from_double(x, scale = NULL)
 }
 \arguments{
 \item{x}{A double vector.}
+
+\item{scale}{An integer scalar giving the number of fractional digits to
+store, or \code{NULL} to use \code{getOption("decimal.default_scale")}.}
 }
 \value{
 A \code{decimal} vector.
 }
 \description{
 Converts each IEEE 754 double to its exact decimal value. This differs from
-parsing a character literal such as \code{"0.1"}.
+parsing a character literal such as \code{"0.1"}. Because the exact binary value
+of a double can require dozens of fractional digits, a scale must be given
+explicitly or configured with \code{options(decimal.default_scale = )}. The
+result is quantized to that scale using the active context's rounding and
+trap settings.
 }
 \examples{
-decimal_from_double(0.1)
-decimal_from_double(c(0.5, 0.25))
+decimal_from_double(0.1, scale = 20)
+decimal_from_double(c(0.5, 0.25), scale = 2)
 }

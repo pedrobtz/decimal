@@ -16,29 +16,58 @@ library(decimal)
 Values are immutable; arithmetic behavior comes from the active decimal
 context rather than from per-value mutable state.
 
-## Construction
+## Construction and scale
 
-Character and integer inputs are exact:
+Every `decimal` vector has a single shared **scale**: the number of
+fractional digits stored for every element. Character and integer inputs are
+exact; when `scale` is not given, it is inferred as the largest number of
+fractional digits present, and every element is padded (never rounded) to
+that shared scale:
 
 ```{r}
 decimal(c("1.20", "-0", "Infinity", "NaN"))
 decimal(c(1L, 2L, NA_integer_))
 ```
 
-Double conversion is explicit and exact. This matters because a binary double
-and a decimal literal are not the same thing:
+Because scale is a property of the vector rather than the element,
+`decimal("1.2")` and `decimal("1.20")` are the same value, and combining them
+produces one uniformly scaled vector:
+
+```{r}
+decimal("1.2") == decimal("1.20")
+decimal(c("1.2", "1.20"))
+```
+
+Double conversion is explicit and exact, and because the exact binary value of
+a double can need dozens of fractional digits, it requires an explicit or
+globally configured `scale`:
 
 ```{r}
 decimal("0.1")
-as_decimal(0.1)
+decimal_from_double(0.1, scale = 25)
 ```
 
 If you want decimal `0.1`, write `decimal("0.1")`.
 
+For workflows that consistently use one scale, set an opt-in default. An
+explicit `scale` argument still takes precedence:
+
+```{r}
+withr::with_options(
+  list(decimal.default_scale = 7L),
+  as_decimal(0.002)
+)
+```
+
+Set it globally with `options(decimal.default_scale = 7L)`, or use
+`withr::local_options(decimal.default_scale = 7L)` when the default should
+apply only within the current function or test.
+
 ## Vector behavior
 
 Decimal values are `vctrs` vectors. They combine with integers, but they do
-not implicitly combine with doubles or character vectors:
+not implicitly combine with doubles or character vectors. Combining decimal
+vectors promotes to the common (largest) scale:
 
 ```{r}
 vctrs::vec_c(decimal("1.20"), 2L, NA)
@@ -87,15 +116,13 @@ The quotient truncates toward zero and the remainder has the dividend's sign.
 
 ```{r}
 quantize(decimal("1.2345"), decimal("0.01"))
-normalize(decimal(c("1.2300", "-0.00")))
+normalize(decimal(c("1.2300", "1.2")))
 fma(decimal("2"), decimal("3"), decimal("4"))
-same_quantum(decimal("1.20"), decimal("2.30"))
+same_quantum(decimal(c("1.20", "2.0")), decimal(c("2.30", "3.00")))
 adjusted(decimal(c("1.2300", "1E-3")))
 ```
 
-## Compatibility boundary
-
-Version 0.1.0 implements the core workflow: exact values, contexts,
-arithmetic, comparison, summaries, and special-value handling. Some advanced
-Python `decimal` features remain deferred, especially total-order APIs and the
-larger toolbox of representational operations.
+`same_quantum()` compares the two vectors' declared scales, since scale is a
+per-vector property. `normalize()` strips shared trailing zeros down to the
+finest scale the vector actually needs, without discarding any element's
+significance.

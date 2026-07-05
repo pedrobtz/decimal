@@ -1,59 +1,47 @@
 # decimal
 
-`decimal` is an R package for arbitrary-precision decimal vectors backed by
-the vendored [`mpdecimal`](https://www.bytereef.org/mpdecimal/doc/libmpdec/) C library.
+<!-- badges: start -->
+[![R-CMD-check](https://github.com/pedrobtz/decimal/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/pedrobtz/decimal/actions/workflows/R-CMD-check.yaml)
+[![coverage](https://raw.githubusercontent.com/pedrobtz/decimal/main/.github/badges/coverage.svg)](https://github.com/pedrobtz/decimal/actions/workflows/coverage.yaml)
+<!-- badges: end -->
 
-Version `0.1.0` is a correctness-first release focused on exact values,
-context-aware arithmetic, vector behavior, and special-value semantics.
+The package brings exact, arbitrary-precision decimal numbers to R. It is built
+on top of the [`mpdecimal`](https://www.bytereef.org/mpdecimal/doc/libmpdec/)
+C library for the underlying arithmetic, and on the R package
+[`vctrs`](https://vctrs.r-lib.org/) so the values work naturally as vectors
+and in data frames and tibbles.
+
+## Main features
+
+- element-wise arithmetic: `+`, `-`, `*`, `/`, `^`, `%%`, and `%/%`;
+- math functions `abs()`, `sign()`, `sqrt()`, `exp()`, `log()`, `log10()`,
+  `floor()`, `ceiling()`, and `trunc()`, plus a fused multiply-add `fma()`;
+- reductions `sum()`, `prod()`, `min()`, `max()`, and `mean()`;
+- exact comparison, sorting, and matching;
+- exact construction from character and integer vectors, at a single shared
+  vector scale;
+- explicit, exact conversion from doubles via `as_decimal()` and
+  `decimal_from_double()`, using an explicit or globally configured scale;
+- active contexts with precision, rounding, traps, and sticky flags that
+  control how signals such as overflow or division by zero are handled;
+- support for `NA`, signed zero, infinities, qNaN, and sNaN;
+- decimal-specific helpers such as `quantize()`, `normalize()`,
+  `same_quantum()`, `adjusted()`, and `number_class()`.
 
 ## Installation
 
-Once on CRAN:
+Install the released version from CRAN with:
 
 ```r
 install.packages("decimal")
 ```
 
-Development version from GitHub:
+Or install the development version from GitHub with pak:
 
 ```r
 # install.packages("pak")
 pak::pak("pedrobtz/decimal")
 ```
-
-## Why decimal?
-
-Binary doubles are fast, but many decimal quantities are not represented
-exactly:
-
-```r
-library(decimal)
-
-format(0.1 + 0.2, digits = 17)
-#> [1] "0.30000000000000004"
-
-decimal("0.1") + decimal("0.2")
-#> <decimal[1]>
-#> [1] 0.3
-
-as_decimal(0.1)
-#> <decimal[1]>
-#> [1] 0.1000000000000000055511151231257827021181583404541015625
-```
-
-`decimal("0.1")` means the decimal literal `0.1`. `as_decimal(0.1)` means the
-exact underlying IEEE 754 double value.
-
-## Main features
-
-- exact construction from character and integer vectors;
-- explicit, exact conversion from doubles via `as_decimal()` and
-  `decimal_from_double()`;
-- active contexts with precision, rounding, traps, and sticky flags;
-- vectorized arithmetic, comparison, sorting, matching, and summaries;
-- support for `NA`, signed zero, infinities, qNaN, and sNaN;
-- decimal-specific helpers such as `quantize()`, `normalize()`, `fma()`,
-  `same_quantum()`, `adjusted()`, and `number_class()`.
 
 ## Quick examples
 
@@ -65,24 +53,28 @@ sum(x)
 #> <decimal[1]>
 #> [1] 6.90
 
-ctx <- decimal_context(precision = 3L, traps = character())
-with_decimal_context(ctx, decimal("1.25") + decimal("0"))
-#> <decimal[1]>
-#> [1] 1.25
+# 5% annual interest compounded over 4 years, kept exact
+principal <- decimal(c("1000.00", "2500.00", "500.00"))
+rate <- decimal("0.05")
 
-set_decimal_context(decimal_context(precision = 2L, traps = character()))
-clear_decimal_flags()
-decimal("1.25") + decimal("0")
-#> <decimal[1]>
-#> [1] 1.2
-decimal_flags()
-#> [1] "inexact" "rounded"
+balance <- principal * (1L + rate)^4L
+balance
+#> <decimal[3]>
+#> [1] 1215.5062500000 3038.7656250000  607.7531250000
+
+# round to cents for reporting
+quantize(balance, decimal("0.01"))
+#> <decimal[3]>
+#> [1] 1215.51 3038.77  607.75
 ```
 
 ## Documentation
 
 - `vignette("decimal-values", package = "decimal")`
 - `vignette("contexts-and-signals", package = "decimal")`
+- To learn more about decimal arithmetic itself, see the
+  [General Decimal Arithmetic specification](https://speleotrove.com/decimal/decarith.pdf),
+  which `mpdecimal` implements and this package follows.
 
 ## License
 

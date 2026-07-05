@@ -15,3 +15,5 @@ src/**/*.dll
 .positai
 docs
 *.pdf
+/doc/
+/Meta/

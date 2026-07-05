@@ -25,7 +25,9 @@ decimal_context(
 
 \item{emin}{Integer scalar minimum exponent.}
 
-\item{traps}{Character vector of trapped signals.}
+\item{traps}{Character vector of trapped signals. Trapped signals raise an
+error; all other raised signals are recorded as flags and, unless
+\code{options(decimal.report_flags = FALSE)}, reported as warnings.}
 
 \item{flags}{Character vector of sticky signal flags.}
 
@@ -40,6 +42,25 @@ A \code{decimal_context} object.
 Constructs a validated arithmetic context for native \code{mpdecimal}
 operations. The context controls precision, rounding, exponent limits,
 traps, sticky flags, and classification of normal versus subnormal values.
+}
+\details{
+Each operation may raise one or more signals (see \code{\link[=decimal_flags]{decimal_flags()}}). Their
+disposition depends on \code{traps}:
+\itemize{
+\item A raised signal that is in \code{traps} stops the operation with an error.
+\item Any other raised signal is recorded as a sticky flag and, by default,
+also surfaced as a warning of class \code{decimal_flags_warning}.
+}
+
+The warnings are purely informational; sticky flags accumulate either way.
+Set \code{options(decimal.report_flags = FALSE)} to silence them and rely on
+\code{\link[=decimal_flags]{decimal_flags()}} alone.
+
+A few operations are exempt from the warning because \code{inexact}/\code{rounded}
+is their guaranteed, expected outcome rather than a surprise:
+\code{\link[=quantize]{quantize()}} (and \code{round()}/\code{signif()}, built on it), and \code{sqrt()},
+\code{exp()}, \code{log()}, and \code{log10()}, which are irrational for nearly every
+input. These still accumulate sticky flags as usual.
 }
 \examples{
 decimal_context(precision = 10L)

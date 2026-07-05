@@ -158,12 +158,32 @@ decimal_update_flags <- function(flags) {
 #' operations. The context controls precision, rounding, exponent limits,
 #' traps, sticky flags, and classification of normal versus subnormal values.
 #'
+#' @details
+#' Each operation may raise one or more signals (see [decimal_flags()]). Their
+#' disposition depends on `traps`:
+#'
+#' * A raised signal that is in `traps` stops the operation with an error.
+#' * Any other raised signal is recorded as a sticky flag and, by default,
+#'   also surfaced as a warning of class `decimal_flags_warning`.
+#'
+#' The warnings are purely informational; sticky flags accumulate either way.
+#' Set `options(decimal.report_flags = FALSE)` to silence them and rely on
+#' [decimal_flags()] alone.
+#'
+#' A few operations are exempt from the warning because `inexact`/`rounded`
+#' is their guaranteed, expected outcome rather than a surprise:
+#' [quantize()] (and `round()`/`signif()`, built on it), and `sqrt()`,
+#' `exp()`, `log()`, and `log10()`, which are irrational for nearly every
+#' input. These still accumulate sticky flags as usual.
+#'
 #' @param precision Integer scalar precision.
 #' @param rounding One of `"up"`, `"down"`, `"ceiling"`, `"floor"`,
 #'   `"half_up"`, `"half_down"`, `"half_even"`, or `"05up"`.
 #' @param emax Integer scalar maximum exponent.
 #' @param emin Integer scalar minimum exponent.
-#' @param traps Character vector of trapped signals.
+#' @param traps Character vector of trapped signals. Trapped signals raise an
+#'   error; all other raised signals are recorded as flags and, unless
+#'   `options(decimal.report_flags = FALSE)`, reported as warnings.
 #' @param flags Character vector of sticky signal flags.
 #' @param clamp Logical scalar clamp mode.
 #' @param allcr Logical scalar enabling correct-rounding mode in mpdecimal.
@@ -278,6 +298,12 @@ local_decimal_context <- function(x, .local_envir = parent.frame()) {
 
 #' Read sticky decimal flags
 #'
+#' Sticky flags accumulate the signals raised by operations that were not
+#' trapped (see [decimal_context()]). They persist until [clear_decimal_flags()]
+#' is called. By default the same non-trapped signals are also reported as
+#' warnings as they occur; set `options(decimal.report_flags = FALSE)` to
+#' silence the warnings and inspect flags only through this function.
+#'
 #' @return A character vector of active sticky flags.
 #' @examples
 #' decimal_flags()
@@ -302,20 +328,21 @@ clear_decimal_flags <- function() {
 
 #' @export
 format.decimal_context <- function(x, ...) {
-  paste0(
-    "<decimal_context precision=", x$precision,
-    " rounding=", x$rounding,
-    " emin=", x$emin,
-    " emax=", x$emax,
-    " clamp=", tolower(as.character(x$clamp)),
-    " allcr=", tolower(as.character(x$allcr)),
-    " traps=[", paste(x$traps, collapse = ", "), "]",
-    " flags=[", paste(x$flags, collapse = ", "), "]>"
+  c(
+    "<decimal_context>",
+    paste0("  precision: ", x$precision),
+    paste0("  rounding:  ", x$rounding),
+    paste0("  emin:      ", x$emin),
+    paste0("  emax:      ", x$emax),
+    paste0("  clamp:     ", x$clamp),
+    paste0("  allcr:     ", x$allcr),
+    paste0("  traps:     [", paste(x$traps, collapse = ", "), "]"),
+    paste0("  flags:     [", paste(x$flags, collapse = ", "), "]")
   )
 }
 
 #' @export
 print.decimal_context <- function(x, ...) {
-  cat(format(x, ...), "\n", sep = "")
+  cat(format(x, ...), sep = "\n")
   invisible(x)
 }

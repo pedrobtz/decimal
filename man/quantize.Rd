@@ -2,32 +2,32 @@
 % Please edit documentation in R/decimal.R
 \name{quantize}
 \alias{quantize}
-\alias{normalize}
-\alias{fma}
-\alias{same_quantum}
-\title{Decimal-specific operations}
+\title{Quantize decimal values to a scale}
 \usage{
 quantize(x, quantum)
-
-normalize(x)
-
-fma(x, y, z)
-
-same_quantum(x, y)
 }
 \arguments{
-\item{x, y, z, quantum}{Decimal-compatible vectors.}
+\item{x}{A decimal-compatible vector to quantize.}
+
+\item{quantum}{A decimal-compatible vector whose shared scale determines
+the result scale.}
 }
 \value{
-A decimal vector, except \code{same_quantum()} which returns a logical
-vector.
+A \code{decimal} vector with the shared scale of \code{quantum}.
 }
 \description{
-Decimal-specific operations
+\code{quantize()} rounds each value in \code{x} to the scale declared by \code{quantum}.
+The operation uses the active context's rounding mode, updates sticky
+flags, and raises any enabled traps. The arguments follow normal vctrs
+recycling rules.
+}
+\details{
+Reducing the scale is the explicit purpose of \code{quantize()} (and of
+\code{round()} and \code{signif()}, both implemented on top of it), so the \code{inexact}
+and \code{rounded} signals this commonly raises are not reported as warnings
+the way other operations' signals are (see \code{\link[=decimal_context]{decimal_context()}}); they
+still accumulate as sticky flags.
 }
 \examples{
 quantize(decimal("1.23456"), decimal("0.01"))
-normalize(decimal("1.2300"))
-fma(decimal("2"), decimal("3"), decimal("4"))
-same_quantum(decimal("1.00"), decimal("2.00"))
 }
