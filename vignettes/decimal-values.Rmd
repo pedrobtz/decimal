@@ -12,9 +12,14 @@ knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
 library(decimal)
 ```
 
-`decimal` provides exact, serializable decimal vectors backed by [`mpdecimal`](https://www.bytereef.org/mpdecimal/doc/libmpdec/).
-Values are immutable; arithmetic behavior comes from the active decimal
-context rather than from per-value mutable state.
+`decimal` provides exact decimal vectors backed by
+[`mpdecimal`](https://www.bytereef.org/mpdecimal/doc/libmpdec/). Values are
+immutable and stored as text internally, so converting one back to a string
+with `format()` or `as.character()` always reproduces it exactly -- nothing
+is lost round-tripping through a CSV file or a database column. Arithmetic
+behavior itself comes from the active decimal context rather than from
+per-value state; see `vignette("contexts-and-signals")` for precision,
+rounding, traps, and signals.
 
 ## Construction and scale
 
@@ -77,6 +82,12 @@ vctrs::vec_c(decimal("1.20"), 2L, NA)
 vctrs::vec_c(decimal("1.20"), 0.5)
 ```
 
+Both are rejected rather than silently coerced, because turning a double or a
+string into a `decimal` isn't a lossless type promotion the way integer is:
+a double needs a scale decided for it (see above), and a string needs to be
+parsed, which can fail outright on invalid input. Call `as_decimal()` or
+`decimal()` explicitly instead.
+
 ## Special values
 
 `decimal` distinguishes R missing values from decimal NaNs:
@@ -89,9 +100,15 @@ is.nan(x)
 number_class(x)
 ```
 
-- `NA` is an R missing value.
-- `NaN` and `sNaN` are decimal NaNs.
-- formatting preserves signed zero.
+- `NA` is an R missing value, absent from the computation entirely.
+- `NaN` (quiet NaN) and `sNaN` (signaling NaN) are decimal not-a-number
+  values that participate in arithmetic. A quiet `NaN` propagates silently;
+  an `sNaN` raises the `invalid_operation` signal, which is trapped (an
+  error) under the default context -- see `vignette("contexts-and-signals")`.
+- `is.na()` returns `TRUE` for both R's `NA` and decimal NaNs, matching base
+  R's own `is.na(NaN)`. `is.nan()` is what distinguishes a decimal NaN from
+  an R-level missing value.
+- formatting preserves signed zero (`-0` prints as `-0`, not `0`).
 
 ## Arithmetic and summaries
 
@@ -103,26 +120,53 @@ sum(decimal(c("1.20", "2.30", "3.40")))
 mean(decimal(c("1", "2", "3")))
 ```
 
-Some operations differ from base R because they follow decimal semantics:
+`%%` and `%/%` differ from base R: base R's integer division floors toward
+negative infinity, while decimal division truncates toward zero, per General
+Decimal Arithmetic:
 
 ```{r}
-decimal("-7") %% decimal("4")
+-7 %% 4                        # base R: floored, remainder takes divisor's sign
+decimal("-7") %% decimal("4")  # decimal: truncated, remainder takes dividend's sign
+
+-7 %/% 4
 decimal("-7") %/% decimal("4")
 ```
 
-The quotient truncates toward zero and the remainder has the dividend's sign.
-
 ## Decimal-specific helpers
+
+`quantize()` rounds `x` to the scale declared by `quantum`, using the active
+context's rounding mode -- the same operation behind `round()` and
+`signif()`:
 
 ```{r}
 quantize(decimal("1.2345"), decimal("0.01"))
-normalize(decimal(c("1.2300", "1.2")))
-fma(decimal("2"), decimal("3"), decimal("4"))
-same_quantum(decimal(c("1.20", "2.0")), decimal(c("2.30", "3.00")))
-adjusted(decimal(c("1.2300", "1E-3")))
 ```
 
-`same_quantum()` compares the two vectors' declared scales, since scale is a
-per-vector property. `normalize()` strips shared trailing zeros down to the
-finest scale the vector actually needs, without discarding any element's
-significance.
+`normalize()` strips shared trailing zeros down to the finest scale the
+vector actually needs, without discarding any element's significance:
+
+```{r}
+normalize(decimal(c("1.2300", "1.2")))
+```
+
+`fma()` computes `a * b + c` as one fused operation with a single rounding
+at the end, rather than rounding once after the multiplication and again
+after the addition:
+
+```{r}
+fma(decimal("2"), decimal("3"), decimal("4"))
+```
+
+`same_quantum()` reports whether two vectors share the same declared scale,
+since scale is a per-vector rather than per-value property:
+
+```{r}
+same_quantum(decimal(c("1.20", "2.0")), decimal(c("2.30", "3.00")))
+```
+
+`adjusted()` returns each value's adjusted exponent -- the exponent it would
+have in scientific notation with a single digit before the point:
+
+```{r}
+adjusted(decimal(c("1.2300", "1E-3")))
+```

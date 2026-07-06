@@ -16,8 +16,11 @@ options(decimal.report_flags = FALSE)
 ```
 
 `decimal` separates immutable values from the active arithmetic context.
-Construction is exact; arithmetic and context-sensitive operations are where
-precision, rounding, traps, and sticky flags apply.
+Construction is exact (see `vignette("decimal-values")`); arithmetic and
+other context-sensitive operations are where precision, rounding, traps,
+and sticky flags apply. The context is a single, session-wide active
+setting -- not attached to any particular value -- so changing it changes
+how *subsequent* operations behave, not values already created.
 
 ## The default context
 
@@ -35,7 +38,8 @@ The default context uses:
 
 ## Temporary contexts
 
-Use `with_decimal_context()` or `local_decimal_context()` to scope changes:
+`with_decimal_context()` scopes a context to a single expression, restoring
+the previous context once it returns:
 
 ```{r}
 ctx <- decimal_context(precision = 2L, traps = character())
@@ -43,6 +47,22 @@ ctx <- decimal_context(precision = 2L, traps = character())
 with_decimal_context(ctx, decimal("1.25") + decimal("0"))
 get_decimal_context()
 ```
+
+`local_decimal_context()` scopes a context to the calling function instead,
+which is useful when several statements need the temporary context rather
+than just one expression:
+
+```{r}
+f <- function() {
+  local_decimal_context(decimal_context(precision = 2L, traps = character()))
+  decimal("1.234") + decimal("0")
+}
+f()
+get_decimal_context()
+```
+
+Either way, the context active before the call is restored automatically
+once the scope ends.
 
 The active context is restored automatically.
 
@@ -98,6 +118,27 @@ The warning is informational; the sticky flags accumulate either way. Set
 `options(decimal.report_flags = FALSE)` to make non-trapped signals silent and
 inspect them through `decimal_flags()` alone, as the examples above do.
 
+A few operations are exempt from the warning because `inexact`/`rounded` is
+their guaranteed, requested outcome rather than a surprise: `quantize()`
+(and `round()`/`signif()`, built on it) exist specifically to reduce
+precision to a scale the caller named, and `sqrt()`, `exp()`, `log()`, and
+`log10()` are irrational for nearly every input, so they are inexact at
+almost every call. `/` is not exempt, because it is only *sometimes*
+inexact, so the warning there is genuinely informative:
+
+```{r}
+withr::with_options(
+  list(decimal.report_flags = TRUE),
+  with_decimal_context(decimal_context(precision = 10L, traps = character()), {
+    sqrt(decimal("2"))          # inexact, but silent -- expected of sqrt()
+    decimal("1") / decimal("3") # inexact, and warns -- not every division is
+  })
+)
+```
+
+These exempted operations still update the sticky flags as usual; only the
+warning is suppressed.
+
 ## Traps
 
 If a signal is trapped, the operation raises a classed R error:
@@ -108,11 +149,26 @@ with_decimal_context(decimal_context(traps = "division_by_zero"), {
 })
 ```
 
-This lets calling code handle decimal failures explicitly.
+This lets calling code handle decimal failures explicitly. The default
+context traps `division_by_zero`, `invalid_operation`, and `overflow` --
+the conditions most likely to indicate a genuine bug rather than routine
+rounding. Add other signals for a stricter context, for example one where
+any loss of precision is itself an error:
+
+```{r, error = TRUE}
+strict <- decimal_context(
+  traps = c("division_by_zero", "invalid_operation", "overflow", "inexact")
+)
+with_decimal_context(strict, decimal("1") / decimal("3"))
+```
 
 ## Classification and predicates
 
-Classification is context-aware for normal versus subnormal values:
+A finite, nonzero value is *subnormal* when its exponent falls below the
+context's `emin`, meaning it has fewer significant digits available than
+`precision` allows; otherwise it is *normal*. Classification is therefore
+context-aware, not a fixed property of the value alone -- `1E-3` below is
+subnormal only because `emin = -2L` puts it out of the normal range:
 
 ```{r}
 ctx <- decimal_context(precision = 3L, emin = -2L)
@@ -128,7 +184,11 @@ Useful predicates include:
 x <- decimal(c("NaN", "sNaN", "Infinity", "-0", "1E-3"))
 is_qnan(x)
 is_snan(x)
-is_infinite <- is.infinite(x)
+is.infinite(x)
 is_zero(x)
 is_signed(x)
 ```
+
+`is_signed()` reports the sign bit directly, including on zero -- it is how
+`-0` above is distinguished from `0` without relying on `sign()`, which
+treats both as `0`.
