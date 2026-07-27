@@ -2,6 +2,9 @@
 ^\.Rproj\.user$
 ^\.positai$
 ^\.claude$
+^\.agents$
+^AGENTS\.md$
+^CLAUDE\.md$
 ^\.github$
 ^.*\.tar\.gz$
 ^check$
@@ -14,3 +17,4 @@
 ^pkgdown$
 ^doc$
 ^Meta$
+^README\.Rmd$

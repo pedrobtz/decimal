@@ -9,37 +9,54 @@ vignette: >
 
 ```{r, include = FALSE}
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
-library(decimal)
 # Non-trapped signals warn by default (see "Reporting signals" below). Silence
 # them here so the flag examples stay focused; the warning is shown on its own.
 options(decimal.report_flags = FALSE)
 ```
 
-`decimal` separates immutable values from the active arithmetic context.
-Construction is exact (see `vignette("decimal-values")`); arithmetic and
-other context-sensitive operations are where precision, rounding, traps,
-and sticky flags apply. The context is a single, session-wide active
-setting -- not attached to any particular value -- so changing it changes
-how *subsequent* operations behave, not values already created.
+When you add two decimals, how many digits should the result keep? What
+happens when it doesn't fit — round it, or error? And which way should it
+round? In decimal arithmetic, these are not hard-coded answers: they come from
+the **context**, an explicit, session-wide setting that governs every
+operation.
+
+This vignette shows you how to inspect the context, change it (safely!), and
+work with the *signals* that operations raise along the way — conditions like
+`inexact`, `division_by_zero`, and `overflow`.
+
+If you haven't yet, start with `vignette("decimal-values")`: values themselves
+are immutable and construction is always exact. The context only shapes
+*arithmetic* — so changing it changes how subsequent operations behave, never
+the values you've already created.
+
+```{r setup}
+library(decimal)
+```
 
 ## The default context
+
+You can look at the active context at any time:
 
 ```{r}
 get_decimal_context()
 ```
 
-The default context uses:
+The defaults are sensible for most work:
 
-- precision 28
-- round half even
-- `Emin = -999999`
-- `Emax = 999999`
-- traps for invalid operation, division by zero, and overflow
+* **precision 28** — results keep up to 28 significant digits;
+* **round half even** — banker's rounding, the same default as Python;
+* **`Emin = -999999` and `Emax = 999999`** — generous exponent limits;
+* **traps on `invalid_operation`, `division_by_zero`, and `overflow`** — the
+  conditions most likely to mean a genuine bug are errors, while routine
+  rounding is not.
 
-## Temporary contexts
+## Changing the context, temporarily
 
-`with_decimal_context()` scopes a context to a single expression, restoring
-the previous context once it returns:
+You'll rarely want to change the context for a whole session. Instead, scope
+the change, in the same spirit as `withr::with_*()` and `withr::local_*()`.
+
+`with_decimal_context()` applies a context to a single expression, then
+restores the previous one:
 
 ```{r}
 ctx <- decimal_context(precision = 2L, traps = character())
@@ -48,9 +65,8 @@ with_decimal_context(ctx, decimal("1.25") + decimal("0"))
 get_decimal_context()
 ```
 
-`local_decimal_context()` scopes a context to the calling function instead,
-which is useful when several statements need the temporary context rather
-than just one expression:
+`local_decimal_context()` applies a context until the calling function
+returns, which is handy when several statements need it:
 
 ```{r}
 f <- function() {
@@ -61,27 +77,23 @@ f()
 get_decimal_context()
 ```
 
-Either way, the context active before the call is restored automatically
-once the scope ends.
+Either way, the previous context comes back automatically when the scope ends
+— even if an error interrupts it.
 
-The active context is restored automatically.
+## Signals and sticky flags
 
-## Rounding and sticky flags
+Decimal operations *signal* noteworthy conditions: a result was rounded, a
+division hit zero, a value overflowed. What happens next depends on the
+context, and each signal gets one of three dispositions:
 
-When traps are disabled, signals are recorded in the sticky flags:
+* **Trapped** — the operation raises a classed R error.
+* **Reported** — the signal is recorded as a flag *and* surfaced as a warning.
+  This is the default for any signal you haven't trapped.
+* **Silent** — the signal is recorded as a flag only.
 
-```{r}
-old <- get_decimal_context()
-set_decimal_context(decimal_context(precision = 2L, traps = character()))
-clear_decimal_flags()
-
-decimal("1.25") + decimal("0")
-decimal_flags()
-
-set_decimal_context(old)
-```
-
-Sticky flags accumulate until you clear them:
+The flags are *sticky*: once raised, they stay raised until you clear them,
+so you can run a whole computation and check afterwards what happened along
+the way:
 
 ```{r}
 ctx <- decimal_context(precision = 2L, traps = character())
@@ -93,16 +105,15 @@ with_decimal_context(ctx, {
 })
 ```
 
+Both operations had to round to fit two significant digits, raising `inexact`
+and `rounded`; the flags simply stay raised across the whole block. Use
+`clear_decimal_flags()` to start a fresh slate before a computation you want
+to audit.
+
 ## Reporting signals
 
-Every signal has one of three dispositions:
-
-- **Trapped** — the operation raises a classed R error (see below).
-- **Reported** — the signal is recorded as a flag *and* surfaced as a warning
-  as it occurs. This is the default for any non-trapped signal.
-- **Silent** — the signal is recorded as a flag only.
-
-By default, non-trapped signals are reported, so ordinary rounding warns:
+By default, any signal that isn't trapped is also *reported* — surfaced as a
+warning as it occurs, so precision loss never passes silently:
 
 ```{r}
 withr::with_options(
@@ -114,16 +125,17 @@ withr::with_options(
 )
 ```
 
-The warning is informational; the sticky flags accumulate either way. Set
-`options(decimal.report_flags = FALSE)` to make non-trapped signals silent and
-inspect them through `decimal_flags()` alone, as the examples above do.
+The warning is purely informational; the sticky flags accumulate either way.
+If you'd rather check flags on your own schedule, set
+`options(decimal.report_flags = FALSE)` and inspect `decimal_flags()`
+directly — that's what this vignette does behind the scenes to keep the
+output focused.
 
-A few operations are exempt from the warning because `inexact`/`rounded` is
-their guaranteed, requested outcome rather than a surprise: `quantize()`
-(and `round()`/`signif()`, built on it) exist specifically to reduce
-precision to a scale the caller named, and `sqrt()`, `exp()`, `log()`, and
-`log10()` are irrational for nearly every input, so they are inexact at
-almost every call. `/` is not exempt, because it is only *sometimes*
+A few operations are exempt from the warning, because for them
+`inexact`/`rounded` is the *requested* outcome, not a surprise: `quantize()`
+(and `round()` and `signif()`, which build on it) exist precisely to drop
+digits you named, and `sqrt()`, `exp()`, `log()`, and `log10()` are irrational
+for nearly every input. Division is *not* exempt — it's only sometimes
 inexact, so the warning there is genuinely informative:
 
 ```{r}
@@ -136,12 +148,13 @@ withr::with_options(
 )
 ```
 
-These exempted operations still update the sticky flags as usual; only the
-warning is suppressed.
+Exempted operations still update the sticky flags as usual; only the warning
+is suppressed.
 
-## Traps
+## Traps: turning signals into errors
 
-If a signal is trapped, the operation raises a classed R error:
+A trapped signal stops the computation with a classed R error you can handle
+with `tryCatch()`:
 
 ```{r, error = TRUE}
 with_decimal_context(decimal_context(traps = "division_by_zero"), {
@@ -149,11 +162,10 @@ with_decimal_context(decimal_context(traps = "division_by_zero"), {
 })
 ```
 
-This lets calling code handle decimal failures explicitly. The default
-context traps `division_by_zero`, `invalid_operation`, and `overflow` --
-the conditions most likely to indicate a genuine bug rather than routine
-rounding. Add other signals for a stricter context, for example one where
-any loss of precision is itself an error:
+The default traps (`division_by_zero`, `invalid_operation`, `overflow`) catch
+the conditions that usually indicate a bug. You can go stricter: for example,
+in a context where *any* loss of precision should be an error — reconciling
+ledgers, say — trap `inexact` too:
 
 ```{r, error = TRUE}
 strict <- decimal_context(
@@ -162,13 +174,14 @@ strict <- decimal_context(
 with_decimal_context(strict, decimal("1") / decimal("3"))
 ```
 
-## Classification and predicates
+## Classifying values
 
-A finite, nonzero value is *subnormal* when its exponent falls below the
-context's `emin`, meaning it has fewer significant digits available than
-`precision` allows; otherwise it is *normal*. Classification is therefore
-context-aware, not a fixed property of the value alone -- `1E-3` below is
-subnormal only because `emin = -2L` puts it out of the normal range:
+The context even shapes how values are *classified*. A finite, nonzero value
+is **subnormal** when its exponent falls below the context's `emin`, meaning
+fewer significant digits are available to it than `precision` allows;
+otherwise it's **normal**. So classification depends on the active context,
+not on the value alone — below, `1E-3` is subnormal only because `emin = -2L`
+puts it out of the normal range:
 
 ```{r}
 ctx <- decimal_context(precision = 3L, emin = -2L)
@@ -178,7 +191,7 @@ with_decimal_context(ctx, {
 })
 ```
 
-Useful predicates include:
+For quick checks there's a family of predicates:
 
 ```{r}
 x <- decimal(c("NaN", "sNaN", "Infinity", "-0", "1E-3"))
@@ -189,6 +202,5 @@ is_zero(x)
 is_signed(x)
 ```
 
-`is_signed()` reports the sign bit directly, including on zero -- it is how
-`-0` above is distinguished from `0` without relying on `sign()`, which
-treats both as `0`.
+`is_signed()` reports the sign bit directly, including on zero — it's how you
+tell `-0` apart from `0`, since `sign()` treats both as `0`.

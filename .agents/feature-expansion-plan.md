@@ -1,9 +1,13 @@
 # mpdecimal Feature Expansion Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use
-> superpowers:subagent-driven-development (recommended) or
-> superpowers:executing-plans to implement this plan task-by-task. Steps use
-> checkbox (`- [ ]`) syntax for tracking.
+**Status:** Proposed; all tasks are currently unchecked. Verify referenced
+symbols against the current code before beginning a task, then work through one
+task at a time using the repository guidance in [AGENTS.md](../AGENTS.md),
+[Testing](testing.md), and [Conventions](conventions.md).
+
+This is the detailed execution companion to the
+[Product Roadmap](roadmap.md). Steps use checkbox (`- [ ]`) syntax for
+tracking.
 
 **Goal:** Expose the most useful remaining `mpdecimal` operations through a
 vectorized, context-aware R API without treating bundled-library coverage as
@@ -90,8 +94,8 @@ R's normal integral-rounding workflows.
 - Modify `src/init.c`: declarations and fixed-arity native registration.
 - Modify `_pkgdown.yml`: add a dedicated advanced-operations reference group.
 - Modify `NEWS.md`: list each new user-facing function.
-- Modify `README.md`: add a compact advanced-arithmetic example only after the
-  first P1 slice is complete.
+- Modify `README.Rmd`, then regenerate `README.md`: add a compact
+  advanced-arithmetic example only after the first P1 slice is complete.
 
 ## Phase 1: High-value, low-complexity operations
 
@@ -707,7 +711,8 @@ git commit -m "feat: expand decimal formatting"
 
 - Modify: `_pkgdown.yml`
 - Modify: `NEWS.md`
-- Modify: `README.md`
+- Modify: `README.Rmd`
+- Regenerate: `README.md`
 - Modify: `vignettes/decimal-values.Rmd`
 
 - [ ] **Step 1: Add a pkgdown reference group**
@@ -744,7 +749,7 @@ check reports zero errors, warnings, or notes attributable to these changes.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add README.md NEWS.md _pkgdown.yml vignettes R src tests NAMESPACE man
+git add README.Rmd README.md NEWS.md _pkgdown.yml vignettes R src tests NAMESPACE man
 git commit -m "docs: publish advanced decimal operations"
 ```
 

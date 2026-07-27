@@ -9,53 +9,97 @@ vignette: >
 
 ```{r, include = FALSE}
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+R's doubles are binary fractions. They're fast and almost always good enough,
+but they can't represent most decimal numbers exactly — which is why this
+happens:
+
+```{r}
+0.1 + 0.2 == 0.3
+```
+
+Most of the time you can shrug this off. But if you're adding up invoices,
+reconciling accounts, or storing prices, "almost 0.3" doesn't cut it. The
+decimal package gives you vectors that hold decimal numbers *exactly* and
+compute with them exactly, following the same
+[General Decimal Arithmetic](https://speleotrove.com/decimal/decarith.pdf)
+standard as Python's `decimal` module.
+
+This vignette shows you how to create decimal vectors and work with them
+day-to-day. A companion vignette, `vignette("contexts-and-signals")`, covers
+the arithmetic context: precision, rounding modes, and how conditions like
+overflow are handled.
+
+```{r setup}
 library(decimal)
 ```
 
-`decimal` provides exact decimal vectors backed by
-[`mpdecimal`](https://www.bytereef.org/mpdecimal/doc/libmpdec/). Values are
-immutable and stored as text internally, so converting one back to a string
-with `format()` or `as.character()` always reproduces it exactly -- nothing
-is lost round-tripping through a CSV file or a database column. Arithmetic
-behavior itself comes from the active decimal context rather than from
-per-value state; see `vignette("contexts-and-signals")` for precision,
-rounding, traps, and signals.
+## Creating decimal vectors
 
-## Construction and scale
-
-Every `decimal` vector has a single shared **scale**: the number of
-fractional digits stored for every element. Character and integer inputs are
-exact; when `scale` is not given, it is inferred as the largest number of
-fractional digits present, and every element is padded (never rounded) to
-that shared scale:
+The best way to create a decimal is from a string, because a string can say
+*exactly* what you mean:
 
 ```{r}
-decimal(c("1.20", "-0", "Infinity", "NaN"))
-decimal(c(1L, 2L, NA_integer_))
+x <- decimal(c("1.20", "2.30", "3.40"))
+x
 ```
 
-Because scale is a property of the vector rather than the element,
-`decimal("1.2")` and `decimal("1.20")` are the same value, and combining them
-produces one uniformly scaled vector:
+Integers work too, and special values are written the way the standard spells
+them:
+
+```{r}
+decimal(c(1L, 2L, NA_integer_))
+decimal(c("1.20", "-0", "Infinity", "NaN"))
+```
+
+Values are immutable and stored as text internally, so converting back with
+`format()` or `as.character()` always reproduces them exactly — nothing is
+lost round-tripping through a CSV file or a database column:
+
+```{r}
+as.character(x)
+```
+
+## Scale: how many decimal places?
+
+Every decimal vector has a single shared **scale**: the number of fractional
+digits stored for every element. If you don't specify it, decimal infers the
+largest number of fractional digits present, and pads (never rounds!) the
+other elements to match:
+
+```{r}
+decimal(c("1.2", "1.20", "1.234"))
+```
+
+Because scale belongs to the vector rather than to each element,
+`decimal("1.2")` and `decimal("1.20")` are the same value:
 
 ```{r}
 decimal("1.2") == decimal("1.20")
-decimal(c("1.2", "1.20"))
 ```
 
-Double conversion is explicit and exact, and because the exact binary value of
-a double can need dozens of fractional digits, it requires an explicit or
-globally configured `scale`:
+## What about doubles?
+
+You might expect `decimal(0.1)` to work. It doesn't, and that's deliberate:
+the double `0.1` is not actually 0.1 — its exact binary value needs 55
+fractional digits to write out in decimal! So converting a double is explicit,
+via `as_decimal()` or `decimal_from_double()`, and you have to say how many
+digits you want to keep:
 
 ```{r}
-decimal("0.1")
 decimal_from_double(0.1, scale = 25)
 ```
 
-If you want decimal `0.1`, write `decimal("0.1")`.
+If what you want is decimal `0.1`, write `decimal("0.1")`:
 
-For workflows that consistently use one scale, set an opt-in default. An
-explicit `scale` argument still takes precedence:
+```{r}
+decimal("0.1")
+```
+
+If your workflow consistently uses one scale — say, you always want 7 digits —
+set the opt-in default so you don't have to repeat yourself. An explicit
+`scale` argument still wins:
 
 ```{r}
 withr::with_options(
@@ -65,54 +109,42 @@ withr::with_options(
 ```
 
 Set it globally with `options(decimal.default_scale = 7L)`, or use
-`withr::local_options(decimal.default_scale = 7L)` when the default should
-apply only within the current function or test.
+`withr::local_options()` when the default should apply only within a function
+or a test.
 
-## Vector behavior
+## Decimals are well-behaved vectors
 
-Decimal values are `vctrs` vectors. They combine with integers, but they do
-not implicitly combine with doubles or character vectors. Combining decimal
-vectors promotes to the common (largest) scale:
+Decimal vectors are built on [vctrs](https://vctrs.r-lib.org), so they behave
+the way you'd hope inside data frames and tibbles, and with sorting, matching,
+and friends:
+
+```{r}
+tibble::tibble(
+  item  = c("coffee", "bagel", "juice"),
+  price = decimal(c("2.50", "1.25", "3.95"))
+)
+```
+
+They combine freely with integers, promoting to the common (largest) scale:
 
 ```{r}
 vctrs::vec_c(decimal("1.20"), 2L, NA)
 ```
 
+But they refuse to *implicitly* combine with doubles or character strings:
+
 ```{r, error = TRUE}
 vctrs::vec_c(decimal("1.20"), 0.5)
 ```
 
-Both are rejected rather than silently coerced, because turning a double or a
-string into a `decimal` isn't a lossless type promotion the way integer is:
-a double needs a scale decided for it (see above), and a string needs to be
-parsed, which can fail outright on invalid input. Call `as_decimal()` or
-`decimal()` explicitly instead.
+That's the same design decision as above, applied consistently: a double needs
+a scale decided for it, and a string needs to be parsed (which can fail), so
+neither is a lossless, always-safe promotion the way integer is. When you mean
+it, say it — call `decimal()` or `as_decimal()` explicitly.
 
-## Special values
+## Arithmetic
 
-`decimal` distinguishes R missing values from decimal NaNs:
-
-```{r}
-x <- decimal(c(NA_character_, "NaN", "sNaN", "Infinity", "-0"))
-x
-is.na(x)
-is.nan(x)
-number_class(x)
-```
-
-- `NA` is an R missing value, absent from the computation entirely.
-- `NaN` (quiet NaN) and `sNaN` (signaling NaN) are decimal not-a-number
-  values that participate in arithmetic. A quiet `NaN` propagates silently;
-  an `sNaN` raises the `invalid_operation` signal, which is trapped (an
-  error) under the default context -- see `vignette("contexts-and-signals")`.
-- `is.na()` returns `TRUE` for both R's `NA` and decimal NaNs, matching base
-  R's own `is.na(NaN)`. `is.nan()` is what distinguishes a decimal NaN from
-  an R-level missing value.
-- formatting preserves signed zero (`-0` prints as `-0`, not `0`).
-
-## Arithmetic and summaries
-
-Arithmetic is vectorized and significance is preserved in the result:
+Arithmetic is vectorized, exact, and keeps track of significance:
 
 ```{r}
 decimal("1.20") + decimal("2.3")
@@ -120,9 +152,9 @@ sum(decimal(c("1.20", "2.30", "3.40")))
 mean(decimal(c("1", "2", "3")))
 ```
 
-`%%` and `%/%` differ from base R: base R's integer division floors toward
-negative infinity, while decimal division truncates toward zero, per General
-Decimal Arithmetic:
+One difference from base R worth knowing about: `%%` and `%/%`. Base R floors
+integer division toward negative infinity, while General Decimal Arithmetic
+truncates toward zero, so results differ for negative operands:
 
 ```{r}
 -7 %% 4                        # base R: floored, remainder takes divisor's sign
@@ -132,41 +164,77 @@ decimal("-7") %% decimal("4")  # decimal: truncated, remainder takes dividend's 
 decimal("-7") %/% decimal("4")
 ```
 
-## Decimal-specific helpers
+## Special values
 
-`quantize()` rounds `x` to the scale declared by `quantum`, using the active
-context's rounding mode -- the same operation behind `round()` and
-`signif()`:
+decimal supports the full menagerie: `NA`, NaNs, infinities, and signed zero —
+and it keeps R's missing value distinct from decimal's not-a-number:
+
+```{r}
+x <- decimal(c(NA_character_, "NaN", "sNaN", "Infinity", "-0"))
+x
+is.na(x)
+is.nan(x)
+number_class(x)
+```
+
+A few things to note:
+
+* `NA` is an R missing value — it's absent from the computation entirely.
+
+* `NaN` (quiet NaN) and `sNaN` (signaling NaN) are decimal not-a-number values
+  that participate in arithmetic. A quiet NaN propagates silently; an sNaN
+  raises the `invalid_operation` signal, which is an error under the default
+  context — see `vignette("contexts-and-signals")`.
+
+* `is.na()` returns `TRUE` for both `NA` and decimal NaNs, matching base R's
+  own `is.na(NaN)`. Use `is.nan()` to tell a decimal NaN apart from a missing
+  value.
+
+* Signed zero survives formatting: `-0` prints as `-0`, not `0`.
+
+## Rounding and other decimal tools
+
+`quantize()` is the workhorse for rounding: it rescales `x` to the scale
+declared by `quantum`, using the active context's rounding mode. It's the
+operation behind `round()` and `signif()`, and it reads naturally for the most
+common case — rounding to cents:
 
 ```{r}
 quantize(decimal("1.2345"), decimal("0.01"))
 ```
 
-`normalize()` strips shared trailing zeros down to the finest scale the
-vector actually needs, without discarding any element's significance:
+`normalize()` strips shared trailing zeros down to the finest scale the vector
+actually needs, without discarding any element's significance:
 
 ```{r}
 normalize(decimal(c("1.2300", "1.2")))
 ```
 
-`fma()` computes `a * b + c` as one fused operation with a single rounding
-at the end, rather than rounding once after the multiplication and again
+`fma(a, b, c)` computes `a * b + c` as one fused operation with a single
+rounding at the end, instead of rounding after the multiplication and again
 after the addition:
 
 ```{r}
 fma(decimal("2"), decimal("3"), decimal("4"))
 ```
 
-`same_quantum()` reports whether two vectors share the same declared scale,
-since scale is a per-vector rather than per-value property:
+`same_quantum()` reports whether two vectors share the same declared scale
+(remember, scale is a per-vector property):
 
 ```{r}
 same_quantum(decimal(c("1.20", "2.0")), decimal(c("2.30", "3.00")))
 ```
 
-`adjusted()` returns each value's adjusted exponent -- the exponent it would
-have in scientific notation with a single digit before the point:
+And `adjusted()` returns each value's adjusted exponent — the exponent it
+would have in scientific notation with a single digit before the point:
 
 ```{r}
 adjusted(decimal(c("1.2300", "1E-3")))
 ```
+
+## Where to next
+
+Everything above used the default arithmetic settings: 28 digits of precision,
+round-half-even, and errors on division by zero, invalid operations, and
+overflow. All of that is configurable through the decimal *context* — read on
+in `vignette("contexts-and-signals")`.
