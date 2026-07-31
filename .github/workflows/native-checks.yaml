@@ -1,0 +1,20 @@
+on:
+  workflow_dispatch:
+
+name: native-checks
+
+jobs:
+  sanitizers:
+    uses: pedrobtz/r-actions/.github/workflows/sanitizers.yml@v1
+
+  valgrind:
+    uses: pedrobtz/r-actions/.github/workflows/valgrind.yml@v1
+
+  lto:
+    uses: pedrobtz/r-actions/.github/workflows/lto.yml@v1
+
+  gctorture:
+    uses: pedrobtz/r-actions/.github/workflows/gctorture.yml@v1
+
+  rchk:
+    uses: pedrobtz/r-actions/.github/workflows/rchk.yml@v1

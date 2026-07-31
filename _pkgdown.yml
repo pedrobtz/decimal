@@ -1,0 +1,42 @@
+# Deployment target; restore it to DESCRIPTION only after the site is live.
+url: https://pedrobtz.github.io/decimal/
+template:
+  bootstrap: 5
+
+reference:
+  - title: Decimal values
+    contents:
+      - decimal
+      - as_decimal
+      - decimal_from_double
+      - is_decimal
+      - NA_decimal_
+  - title: Decimal operations
+    contents:
+      - quantize
+      - normalize
+      - fma
+      - same_quantum
+      - adjusted
+      - number_class
+  - title: Decimal predicates
+    contents:
+      - is_qnan
+      - is_snan
+      - is_normal
+      - is_subnormal
+      - is_signed
+      - is_zero
+  - title: Contexts and signals
+    contents:
+      - decimal_context
+      - get_decimal_context
+      - set_decimal_context
+      - local_decimal_context
+      - with_decimal_context
+      - decimal_flags
+      - clear_decimal_flags
+  - title: Package information
+    contents:
+      - mpdecimal_version
+      - decimal-package

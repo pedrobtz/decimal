@@ -1,0 +1,23 @@
+PKG_CPPFLAGS = -Impdecimal -DNDEBUG -DMPD_NO_FILE_IO
+PKG_LIBS = -lm
+
+MPDECIMAL_SOURCES = \
+	mpdecimal/basearith.c \
+	mpdecimal/constants.c \
+	mpdecimal/context.c \
+	mpdecimal/convolute.c \
+	mpdecimal/crt.c \
+	mpdecimal/difradix2.c \
+	mpdecimal/fnt.c \
+	mpdecimal/fourstep.c \
+	mpdecimal/io.c \
+	mpdecimal/mpalloc.c \
+	mpdecimal/mpdecimal.c \
+	mpdecimal/mpsignal.c \
+	mpdecimal/numbertheory.c \
+	mpdecimal/sixstep.c \
+	mpdecimal/transpose.c
+
+MPDECIMAL_OBJECTS = $(MPDECIMAL_SOURCES:.c=.o)
+
+OBJECTS = decimal.o core.o init.o $(MPDECIMAL_OBJECTS)
