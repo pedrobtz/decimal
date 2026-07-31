@@ -3,6 +3,12 @@
 
 # decimal
 
+<!-- badges: start -->
+
+[![R-CMD-check](https://github.com/pedrobtz/decimal/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/pedrobtz/decimal/actions/workflows/R-CMD-check.yaml)
+[![coverage](https://raw.githubusercontent.com/pedrobtz/decimal/main/.github/badges/coverage.svg)](https://github.com/pedrobtz/decimal/actions/workflows/coverage.yml)
+<!-- badges: end -->
+
 ## Overview
 
 decimal provides exact, arbitrary-precision decimal vectors for R. If
