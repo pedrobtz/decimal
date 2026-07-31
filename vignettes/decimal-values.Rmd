@@ -144,7 +144,8 @@ it, say it — call `decimal()` or `as_decimal()` explicitly.
 
 ## Arithmetic
 
-Arithmetic is vectorized, exact, and keeps track of significance:
+Arithmetic is vectorized, context-controlled, and keeps track of
+significance:
 
 ```{r}
 decimal("1.20") + decimal("2.3")

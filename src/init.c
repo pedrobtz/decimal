@@ -33,6 +33,7 @@ SEXP decimal_c_math_op_strings(SEXP x, SEXP op, SEXP precision, SEXP rounding,
 SEXP decimal_c_quantize_strings(SEXP x, SEXP y, SEXP precision, SEXP rounding,
                                 SEXP emax, SEXP emin, SEXP traps, SEXP flags,
                                 SEXP clamp, SEXP allcr);
+SEXP decimal_c_rescale_exact_strings(SEXP x, SEXP exponent);
 SEXP decimal_c_fma_strings(SEXP x, SEXP y, SEXP z, SEXP precision,
                            SEXP rounding, SEXP emax, SEXP emin, SEXP traps,
                            SEXP flags, SEXP clamp, SEXP allcr);
@@ -66,6 +67,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"decimal_c_compare_strings", (DL_FUNC) &decimal_c_compare_strings, 11},
     {"decimal_c_math_op_strings", (DL_FUNC) &decimal_c_math_op_strings, 10},
     {"decimal_c_quantize_strings", (DL_FUNC) &decimal_c_quantize_strings, 10},
+    {"decimal_c_rescale_exact_strings",
+     (DL_FUNC) &decimal_c_rescale_exact_strings, 2},
     {"decimal_c_fma_strings", (DL_FUNC) &decimal_c_fma_strings, 11},
     {"decimal_c_same_quantum_strings", (DL_FUNC) &decimal_c_same_quantum_strings, 2},
     {"decimal_c_adjusted_strings", (DL_FUNC) &decimal_c_adjusted_strings, 1},

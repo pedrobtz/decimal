@@ -11,8 +11,7 @@ decimal_context(
   emin = -999999L,
   traps = decimal_default_traps(),
   flags = character(),
-  clamp = FALSE,
-  allcr = TRUE
+  clamp = FALSE
 )
 }
 \arguments{
@@ -32,8 +31,6 @@ error; all other raised signals are recorded as flags and, unless
 \item{flags}{Character vector of sticky signal flags.}
 
 \item{clamp}{Logical scalar clamp mode.}
-
-\item{allcr}{Logical scalar enabling correct-rounding mode in mpdecimal.}
 }
 \value{
 A \code{decimal_context} object.

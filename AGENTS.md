@@ -14,6 +14,8 @@ Read the documents relevant to a change before editing:
   extension points.
 - [Product roadmap](.agents/roadmap.md) — current baseline, next releases, and
   deferred themes.
+- [0.2.0 release plan](.agents/release-0.2.0-plan.md) — committed scope,
+  exclusions, sequencing, and release gates for the next release.
 - [Feature expansion plan](.agents/feature-expansion-plan.md) — detailed,
   task-by-task work for advanced libmpdec operations.
 - [Testing](.agents/testing.md) — test layout, commands, and coverage policy.

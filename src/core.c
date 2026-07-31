@@ -23,16 +23,9 @@ typedef struct {
 
 static const decimal_signal_info decimal_signals[] = {
     {"clamped", MPD_Clamped},
-    {"conversion_syntax", MPD_Conversion_syntax},
     {"division_by_zero", MPD_Division_by_zero},
-    {"division_impossible", MPD_Division_impossible},
-    {"division_undefined", MPD_Division_undefined},
-    {"fpu_error", MPD_Fpu_error},
     {"inexact", MPD_Inexact},
-    {"invalid_context", MPD_Invalid_context},
-    {"invalid_operation", MPD_Invalid_operation},
-    {"insufficient_storage", MPD_Insufficient_storage},
-    {"not_implemented", MPD_Not_implemented},
+    {"invalid_operation", MPD_IEEE_Invalid_operation | MPD_Not_implemented},
     {"overflow", MPD_Overflow},
     {"rounded", MPD_Rounded},
     {"subnormal", MPD_Subnormal},
@@ -578,8 +571,8 @@ SEXP decimal_c_normalize_context(SEXP precision, SEXP rounding, SEXP emax,
                                  SEXP emin, SEXP traps, SEXP flags,
                                  SEXP clamp, SEXP allcr) {
   mpd_context_t ctx;
-  SEXP out = PROTECT(Rf_allocVector(VECSXP, 8));
-  SEXP names = PROTECT(Rf_allocVector(STRSXP, 8));
+  SEXP out = PROTECT(Rf_allocVector(VECSXP, 7));
+  SEXP names = PROTECT(Rf_allocVector(STRSXP, 7));
 
   decimal_context_from_args(&ctx, precision, rounding, emax, emin, traps, flags,
                             clamp, allcr);
@@ -592,7 +585,6 @@ SEXP decimal_c_normalize_context(SEXP precision, SEXP rounding, SEXP emax,
   SET_VECTOR_ELT(out, 4, decimal_signal_names_from_bits(ctx.traps));
   SET_VECTOR_ELT(out, 5, decimal_signal_names_from_bits(ctx.status));
   SET_VECTOR_ELT(out, 6, Rf_ScalarLogical(ctx.clamp));
-  SET_VECTOR_ELT(out, 7, Rf_ScalarLogical(ctx.allcr));
 
   SET_STRING_ELT(names, 0, Rf_mkChar("precision"));
   SET_STRING_ELT(names, 1, Rf_mkChar("rounding"));
@@ -601,7 +593,6 @@ SEXP decimal_c_normalize_context(SEXP precision, SEXP rounding, SEXP emax,
   SET_STRING_ELT(names, 4, Rf_mkChar("traps"));
   SET_STRING_ELT(names, 5, Rf_mkChar("flags"));
   SET_STRING_ELT(names, 6, Rf_mkChar("clamp"));
-  SET_STRING_ELT(names, 7, Rf_mkChar("allcr"));
   Rf_setAttrib(out, R_NamesSymbol, names);
 
   UNPROTECT(2);
@@ -1458,6 +1449,71 @@ SEXP decimal_c_quantize_strings(SEXP x, SEXP y, SEXP precision, SEXP rounding,
 
   UNPROTECT(1);
   return decimal_result_list(values, aggregate_status, trap_status, trap_index);
+}
+
+SEXP decimal_c_rescale_exact_strings(SEXP x, SEXP exponent) {
+  R_xlen_t i;
+  mpd_context_t ctx;
+  mpd_ssize_t target_exponent;
+  SEXP values;
+
+  if (TYPEOF(x) != STRSXP) {
+    Rf_error("`x` must be a character vector");
+  }
+  if (TYPEOF(exponent) != INTSXP || XLENGTH(exponent) != 1 ||
+      INTEGER(exponent)[0] == NA_INTEGER) {
+    Rf_error("`exponent` must be an integer scalar");
+  }
+
+  target_exponent = (mpd_ssize_t)INTEGER(exponent)[0];
+  mpd_maxcontext(&ctx);
+  ctx.traps = 0;
+  ctx.status = 0;
+  ctx.newtrap = 0;
+  values = PROTECT(Rf_allocVector(STRSXP, XLENGTH(x)));
+
+  for (i = 0; i < XLENGTH(x); ++i) {
+    mpd_t *input;
+    mpd_t *result;
+    char *text;
+    uint32_t status = 0;
+
+    if (i % 1024 == 0) {
+      R_CheckUserInterrupt();
+    }
+
+    if (STRING_ELT(x, i) == NA_STRING) {
+      SET_STRING_ELT(values, i, NA_STRING);
+      continue;
+    }
+
+    input = decimal_qnew_checked();
+    result = decimal_qnew_checked();
+    decimal_parse_exact_checked(input, x, i);
+    mpd_qrescale(result, input, target_exponent, &ctx, &status);
+
+    if (status != 0) {
+      mpd_del(input);
+      mpd_del(result);
+      decimal_abort_status(status, "Unable to rescale decimal exactly");
+    }
+
+    text = mpd_to_sci(result, 0);
+    if (text == NULL) {
+      mpd_del(input);
+      mpd_del(result);
+      Rf_error("Unable to format decimal at element %lld",
+               (long long)i + 1);
+    }
+
+    SET_STRING_ELT(values, i, Rf_mkChar(text));
+    mpd_free(text);
+    mpd_del(input);
+    mpd_del(result);
+  }
+
+  UNPROTECT(1);
+  return values;
 }
 
 SEXP decimal_c_fma_strings(SEXP x, SEXP y, SEXP z, SEXP precision,

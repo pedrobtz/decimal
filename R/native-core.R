@@ -122,7 +122,7 @@ decimal_context_call <- function(fun, ...) {
     ctx$traps,
     ctx$flags,
     ctx$clamp,
-    ctx$allcr
+    TRUE
   )
 }
 
@@ -196,6 +196,10 @@ decimal_context_call <- function(fun, ...) {
     decimal_context_call(.Call, decimal_c_quantize_strings, x, y),
     op = "quantize"
   )
+}
+
+.decimal_rescale_exact_strings <- function(x, exponent) {
+  .Call(decimal_c_rescale_exact_strings, x, as.integer(exponent))
 }
 
 .decimal_fma_strings <- function(x, y, z) {

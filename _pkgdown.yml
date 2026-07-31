@@ -1,3 +1,4 @@
+# Deployment target; restore it to DESCRIPTION only after the site is live.
 url: https://pedrobtz.github.io/decimal/
 template:
   bootstrap: 5

@@ -14,16 +14,9 @@ decimal_rounding_names <- function() {
 decimal_signal_names <- function() {
   c(
     "clamped",
-    "conversion_syntax",
     "division_by_zero",
-    "division_impossible",
-    "division_undefined",
-    "fpu_error",
     "inexact",
-    "invalid_context",
     "invalid_operation",
-    "insufficient_storage",
-    "not_implemented",
     "overflow",
     "rounded",
     "subnormal",
@@ -82,8 +75,7 @@ decimal_context_from_list <- function(x, arg = "x") {
       emin = x$emin,
       traps = x$traps,
       flags = x$flags,
-      clamp = x$clamp,
-      allcr = x$allcr
+      clamp = x$clamp
     ))
   }
 
@@ -93,7 +85,7 @@ decimal_context_from_list <- function(x, arg = "x") {
 
   required <- c(
     "precision", "rounding", "emax", "emin",
-    "traps", "flags", "clamp", "allcr"
+    "traps", "flags", "clamp"
   )
 
   missing <- setdiff(required, names(x))
@@ -113,8 +105,7 @@ decimal_context_from_list <- function(x, arg = "x") {
     emin = x$emin,
     traps = x$traps,
     flags = x$flags,
-    clamp = x$clamp,
-    allcr = x$allcr
+    clamp = x$clamp
   )
 }
 
@@ -126,8 +117,7 @@ decimal_context_default <- function() {
     emin = -999999L,
     traps = decimal_default_traps(),
     flags = character(),
-    clamp = FALSE,
-    allcr = TRUE
+    clamp = FALSE
   )
 }
 
@@ -170,6 +160,11 @@ decimal_update_flags <- function(flags) {
 #' Set `options(decimal.report_flags = FALSE)` to silence them and rely on
 #' [decimal_flags()] alone.
 #'
+#' Public signal names are `"clamped"`, `"division_by_zero"`, `"inexact"`,
+#' `"invalid_operation"`, `"overflow"`, `"rounded"`, `"subnormal"`, and
+#' `"underflow"`. The standard `invalid_operation` condition groups
+#' lower-level invalid subconditions such as undefined division (`0 / 0`).
+#'
 #' A few operations are exempt from the warning because `inexact`/`rounded`
 #' is their guaranteed, expected outcome rather than a surprise:
 #' [quantize()] (and `round()`/`signif()`, built on it), and `sqrt()`,
@@ -186,7 +181,6 @@ decimal_update_flags <- function(flags) {
 #'   `options(decimal.report_flags = FALSE)`, reported as warnings.
 #' @param flags Character vector of sticky signal flags.
 #' @param clamp Logical scalar clamp mode.
-#' @param allcr Logical scalar enabling correct-rounding mode in mpdecimal.
 #'
 #' @return A `decimal_context` object.
 #' @examples
@@ -200,8 +194,7 @@ decimal_context <- function(
   emin = -999999L,
   traps = decimal_default_traps(),
   flags = character(),
-  clamp = FALSE,
-  allcr = TRUE
+  clamp = FALSE
 ) {
   precision <- decimal_scalar_integer(precision, "precision")
   emax <- decimal_scalar_integer(emax, "emax")
@@ -210,7 +203,6 @@ decimal_context <- function(
   traps <- decimal_signal_vector(traps, "traps")
   flags <- decimal_signal_vector(flags, "flags")
   clamp <- decimal_scalar_flag(clamp, "clamp")
-  allcr <- decimal_scalar_flag(allcr, "allcr")
 
   if (emax < 0L) {
     rlang::abort("`emax` must be non-negative.")
@@ -228,7 +220,7 @@ decimal_context <- function(
     traps,
     flags,
     clamp,
-    allcr
+    TRUE
   )
 
   structure(ctx, class = "decimal_context")
@@ -335,7 +327,6 @@ format.decimal_context <- function(x, ...) {
     paste0("  emin:      ", x$emin),
     paste0("  emax:      ", x$emax),
     paste0("  clamp:     ", x$clamp),
-    paste0("  allcr:     ", x$allcr),
     paste0("  traps:     [", paste(x$traps, collapse = ", "), "]"),
     paste0("  flags:     [", paste(x$flags, collapse = ", "), "]")
   )

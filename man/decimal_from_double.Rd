@@ -2,7 +2,7 @@
 % Please edit documentation in R/decimal.R
 \name{decimal_from_double}
 \alias{decimal_from_double}
-\title{Exact conversion from double}
+\title{Controlled conversion from double}
 \usage{
 decimal_from_double(x, scale = NULL)
 }
@@ -16,12 +16,12 @@ store, or \code{NULL} to use \code{getOption("decimal.default_scale")}.}
 A \code{decimal} vector.
 }
 \description{
-Converts each IEEE 754 double to its exact decimal value. This differs from
-parsing a character literal such as \code{"0.1"}. Because the exact binary value
-of a double can require dozens of fractional digits, a scale must be given
-explicitly or configured with \code{options(decimal.default_scale = )}. The
-result is quantized to that scale using the active context's rounding and
-trap settings.
+Decodes each IEEE 754 double to its exact decimal value, then quantizes that
+value to the requested scale. This differs from parsing a character literal
+such as \code{"0.1"}. Because the exact binary value of a double can require
+dozens of fractional digits, a scale must be given explicitly or configured
+with \code{options(decimal.default_scale = )}. Quantization uses the active
+context's rounding and trap settings.
 }
 \examples{
 decimal_from_double(0.1, scale = 20)

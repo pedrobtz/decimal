@@ -33,9 +33,11 @@ A \code{decimal} vector.
 \description{
 \code{as_decimal()} is the conversion generic for decimal vectors. Character
 values are parsed exactly, integer values are converted exactly, and
-existing decimal vectors are returned or rescaled. Double values are
-converted from their exact IEEE 754 representation and therefore require
-an explicit or globally configured scale.
+existing decimal vectors are returned or rescaled. Promotion to a finer
+shared scale is exact and context-free; reduction to a coarser scale is
+quantized. Double values are decoded from their exact IEEE 754
+representation and therefore require an explicit or globally configured
+scale before quantization.
 }
 \details{
 When \code{scale} is \code{NULL}, \code{getOption("decimal.default_scale")} is used when

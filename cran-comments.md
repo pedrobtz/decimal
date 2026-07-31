@@ -4,26 +4,33 @@ This is a new submission.
 
 `decimal` provides arbitrary-precision decimal vectors for R, backed by the
 vendored `mpdecimal` C library (the same library used by Python's `decimal`
-module). Values are exact and serializable, arithmetic is governed by an
-explicit decimal context, and vectors integrate with `vctrs`.
+module). Values use an exact, serializable decimal representation, arithmetic
+is governed by an explicit decimal context, and vectors integrate with
+`vctrs`.
 
 ## Test environments
 
 - local macOS, R 4.5.2
-- win-builder (R-devel and R-release)  <!-- TODO: confirm before submitting -->
-- GitHub Actions: ubuntu-latest, macOS-latest, windows-latest  <!-- TODO -->
+
+Win-builder and cross-platform CI results will be added after those preflight
+checks have run and before submission.
 
 ## R CMD check results
 
-0 errors | 0 warnings | 1 note
+Local check: 0 errors | 0 warnings | 2 notes
 
-The NOTE is the one expected for a first-time submission:
+Both notes are artifacts of the local sandboxed macOS toolchain:
 
 ```
-* checking CRAN incoming feasibility ... NOTE
-Maintainer: 'Pedro Baltazar <pedrobtz@gmail.com>'
-New submission
+* checking for future file timestamps ... NOTE
+unable to verify current time
+
+* checking for detritus in the temp directory ... NOTE
+Found the following files/directories:
+  'xcrun_db'
 ```
+
+`urlchecker::url_check()` reports that all package URLs are correct.
 
 ## Notes on the vendored 'mpdecimal' library
 
@@ -40,7 +47,7 @@ New submission
   changes are confined to `src/mpdecimal/mpdecimal.h` and `src/mpdecimal/io.c`
   and are documented in `inst/COPYRIGHTS`.
 
-- The `checking pragmas` step reports `#pragma` directives in
+- If the `checking pragmas` step reports `#pragma` directives in
   `src/mpdecimal/mpdecimal.c` and `src/mpdecimal/io.c`. These are part of the
   unmodified upstream library: the `STDC FENV_ACCESS` / `float_control`
   pragmas in `mpdecimal.c` are required for correctly-rounded floating-point

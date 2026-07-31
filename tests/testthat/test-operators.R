@@ -24,6 +24,17 @@ test_that("decimal arithmetic is vectorized and type stable", {
   expect_error(0.5 + decimal("1"), class = "vctrs_error_incompatible_op")
 })
 
+test_that("elementwise arithmetic and comparisons preserve base-style names", {
+  x <- setNames(decimal(c("1", "2")), c("a", "b"))
+  y <- setNames(decimal(c("3", "4")), c("c", "d"))
+
+  expect_identical(names(x + decimal("1")), names(x))
+  expect_identical(names(decimal("1") + x), names(x))
+  expect_identical(names(x + y), names(x))
+  expect_identical(names(x < decimal("3")), names(x))
+  expect_null(names(unname(x) + y))
+})
+
 test_that("decimal arithmetic respects context flags and traps", {
   old <- get_decimal_context()
   on.exit(set_decimal_context(old), add = TRUE)

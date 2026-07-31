@@ -41,10 +41,11 @@ flowchart LR
 ### Construction
 
 `decimal()` dispatches through `as_decimal()`. Character values are
-canonicalized natively, R infers or validates one shared scale, and values that
-need rescaling are quantized under the active context. Integer construction is
-exact. Double conversion decodes the IEEE 754 value exactly in C and requires
-an explicit or configured scale before quantization.
+canonicalized natively and R infers or validates one shared scale. Promotion
+to a finer scale is exact padding under a context-free native kernel;
+reduction to a coarser scale is quantized under the active context. Integer
+construction is exact. Double conversion decodes the IEEE 754 value exactly
+in C and requires an explicit or configured scale before quantization.
 
 ### Arithmetic
 

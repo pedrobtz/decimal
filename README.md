@@ -3,12 +3,6 @@
 
 # decimal
 
-<!-- badges: start -->
-
-[![R-CMD-check](https://github.com/pedrobtz/decimal/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/pedrobtz/decimal/actions/workflows/R-CMD-check.yaml)
-[![coverage](https://raw.githubusercontent.com/pedrobtz/decimal/main/.github/badges/coverage.svg)](https://github.com/pedrobtz/decimal/actions/workflows/coverage.yaml)
-<!-- badges: end -->
-
 ## Overview
 
 decimal provides exact, arbitrary-precision decimal vectors for R. If
@@ -28,8 +22,8 @@ Doubles are binary fractions, so they can’t represent most decimal
 numbers exactly, and tiny errors accumulate as you compute. That’s
 usually fine — but not when you’re working with money, invoices,
 exchange rates, or anything else where cents have to add up. decimal
-stores values exactly and computes with them exactly, so what you see is
-what you have.
+uses a decimal representation and performs arithmetic under an explicit
+decimal context, so any rounding is controlled and observable.
 
 Under the hood, decimal is built on:
 
@@ -44,9 +38,10 @@ Under the hood, decimal is built on:
 
 Highlights:
 
-- **Exact values.** Construction from strings and integers is exact, and
-  values round-trip through `as.character()` without loss — nothing
-  changes on the way to a CSV file or database column and back.
+- **Exact values.** Strings and integers are parsed exactly; promotion
+  to a finer shared scale only adds trailing zeros. Values round-trip
+  through `as.character()` without loss — nothing changes on the way to
+  a CSV file or database column and back.
 
 - **Full arithmetic.** `+`, `-`, `*`, `/`, `^`, `%%`, `%/%`,
   comparisons, and math functions like `abs()`, `sqrt()`, `exp()`, and
@@ -61,7 +56,7 @@ Highlights:
   rounding mode, and which conditions (overflow, division by zero, …)
   are errors — see `vignette("contexts-and-signals")`.
 
-- **The full standard.** `NA`, signed zeros, infinities, and quiet and
+- **Special values.** `NA`, signed zeros, infinities, and quiet and
   signaling NaNs are supported throughout.
 
 ## Installation
@@ -70,13 +65,6 @@ Install the released version from CRAN:
 
 ``` r
 install.packages("decimal")
-```
-
-Or the development version from GitHub:
-
-``` r
-# install.packages("pak")
-pak::pak("pedrobtz/decimal")
 ```
 
 ## Usage
@@ -149,12 +137,6 @@ quantize(balance, decimal("0.01"))
 - The [General Decimal Arithmetic
   specification](https://speleotrove.com/decimal/decarith.pdf) is the
   standard that mpdecimal implements and this package follows.
-
-## Getting help
-
-If you find a bug or have a feature request, please file an issue on
-[GitHub](https://github.com/pedrobtz/decimal/issues). When reporting a
-bug, a minimal [reprex](https://reprex.tidyverse.org) helps a lot.
 
 ## License
 

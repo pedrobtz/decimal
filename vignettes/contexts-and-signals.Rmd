@@ -25,9 +25,10 @@ work with the *signals* that operations raise along the way — conditions like
 `inexact`, `division_by_zero`, and `overflow`.
 
 If you haven't yet, start with `vignette("decimal-values")`: values themselves
-are immutable and construction is always exact. The context only shapes
-*arithmetic* — so changing it changes how subsequent operations behave, never
-the values you've already created.
+are immutable. Parsing and promotion to a finer shared scale are exact; an
+explicit coarser scale is a quantization request. The context shapes
+arithmetic and quantization, so changing it never changes values already
+created.
 
 ```{r setup}
 library(decimal)
@@ -163,7 +164,9 @@ with_decimal_context(decimal_context(traps = "division_by_zero"), {
 ```
 
 The default traps (`division_by_zero`, `invalid_operation`, `overflow`) catch
-the conditions that usually indicate a bug. You can go stricter: for example,
+the conditions that usually indicate a bug. `invalid_operation` groups the
+standard invalid subconditions, including undefined division such as `0 / 0`.
+You can go stricter: for example,
 in a context where *any* loss of precision should be an error — reconciling
 ledgers, say — trap `inexact` too:
 

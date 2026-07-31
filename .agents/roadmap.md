@@ -2,17 +2,18 @@
 
 ## Purpose
 
-This document records product direction and release-level outcomes. Detailed
-implementation steps for the next numerical feature set live in
-[Feature Expansion Plan](feature-expansion-plan.md). Durable design choices
-live in [decisions/](decisions/).
+This document records product direction and release-level outcomes. The
+committed next-release scope lives in the
+[0.2.0 Release Plan](release-0.2.0-plan.md), while the broader numerical
+backlog lives in [Feature Expansion Plan](feature-expansion-plan.md). Durable
+design choices live in [decisions/](decisions/).
 
 ## Current Baseline: 0.1.0
 
 The first functional release is implemented. It provides:
 
-- exact character and integer construction plus explicit exact double
-  conversion;
+- exact character and integer parsing, context-free shared-scale promotion,
+  and explicit double decoding followed by quantization;
 - character-backed `vctrs` vectors with one shared scale;
 - active contexts with rounding, exponent limits, traps, and sticky flags;
 - vectorized arithmetic, comparison, ordering, Math, and Summary methods;
@@ -24,18 +25,18 @@ The first functional release is implemented. It provides:
 The lifecycle remains early: correctness and a coherent R API take priority
 over feature parity with Python's `decimal` module.
 
-## Next: Complete the Decimal Toolbox
+## Next: 0.2.0 Decimal Toolbox
 
-Prioritize the advanced operations with clear R use cases:
+Prioritize Python-inspired operations with clear R-vector use cases:
 
-1. Adjacent representable values, remainder-near, sign copying, magnitude
-   extrema, exponent shifting, and total comparisons.
-2. A combined quotient/remainder operation.
-3. Modular power, inverse root, and richer formatting where semantics and
-   return types are clear.
+1. Rich formatting and adjacent representable values.
+2. Remainder-near, sign copying, magnitude extrema, exponent shifting, and a
+   combined quotient/remainder operation.
+3. Total comparisons with an R-appropriate return contract.
 
-The executable sequence, tests, and file changes are maintained in
-[Feature Expansion Plan](feature-expansion-plan.md).
+The release scope, exclusions, sequence, and gates are maintained in the
+[0.2.0 Release Plan](release-0.2.0-plan.md). The broader executable backlog
+remains in [Feature Expansion Plan](feature-expansion-plan.md).
 
 ## Later Themes
 
@@ -62,7 +63,7 @@ solely to increase API or coverage counts.
 
 | Capability | Status | Notes |
 | --- | --- | --- |
-| Exact construction and formatting | Implemented | Character/integer exact; double conversion is explicit |
+| Exact parsing and lossless default formatting | Implemented | Finer-scale promotion is exact; double conversion quantizes explicitly |
 | Contexts, traps, and sticky flags | Implemented | Session-scoped, with local helpers |
 | Arithmetic and comparison | Implemented | Vectorized; no implicit decimal/double mixing |
 | Math and summaries | Implemented | Core Math/Summary methods |

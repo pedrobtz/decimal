@@ -20,9 +20,11 @@ A \code{decimal} vector.
 \description{
 \code{decimal()} creates an immutable decimal vector backed by exact strings, at
 a single shared scale (number of fractional digits) for the whole vector.
-Character and integer inputs are converted exactly. Double inputs use the
-exact IEEE 754 binary value and require either an explicit \code{scale} or the
-\code{decimal.default_scale} option.
+Character and integer inputs are parsed exactly. Promotion to a finer
+shared scale only appends zeros and is context-free; a requested coarser
+scale quantizes using the active context. Double inputs are decoded from
+their exact IEEE 754 binary value and require either an explicit \code{scale} or
+the \code{decimal.default_scale} option before quantization.
 }
 \details{
 When \code{scale} is \code{NULL}, \code{getOption("decimal.default_scale")} is used when

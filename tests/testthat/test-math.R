@@ -58,21 +58,15 @@ test_that("missingness and finiteness predicates follow decimal semantics", {
 })
 
 test_that("classification helpers expose decimal-specific state", {
-  # Construct under the default context, then switch context only for
-  # classification: fixed-scale construction itself performs a quantize
-  # whenever elements share a vector but differ in natural scale, so
-  # constructing directly under a restrictive precision can legitimately
-  # trap (see the arithmetic context tests) even though classification
-  # afterward is unaffected by precision.
+  old <- get_decimal_context()
+  on.exit(set_decimal_context(old), add = TRUE)
+  set_decimal_context(decimal_context(precision = 3L, emin = -2L))
+
   x <- decimal(c("1.2300", "1E-3", "-0", "Infinity", "NaN", NA_character_))
   expect_identical(
     as.character(x),
     c("1.2300", "0.0010", "-0.0000", "Infinity", "NaN", NA_character_)
   )
-
-  old <- get_decimal_context()
-  on.exit(set_decimal_context(old), add = TRUE)
-  set_decimal_context(decimal_context(precision = 3L, emin = -2L))
 
   expect_identical(
     number_class(x),
@@ -87,6 +81,21 @@ test_that("classification helpers expose decimal-specific state", {
   )
   expect_identical(is_normal(x), c(TRUE, FALSE, FALSE, FALSE, FALSE, FALSE))
   expect_identical(is_subnormal(x), c(FALSE, TRUE, FALSE, FALSE, FALSE, FALSE))
+})
+
+test_that("elementwise math and decimal helpers preserve names", {
+  x <- setNames(decimal(c("1.20", "2.30")), c("a", "b"))
+
+  expect_identical(names(abs(x)), names(x))
+  expect_identical(names(round(x, 1)), names(x))
+  expect_identical(names(quantize(x, decimal("0.1"))), names(x))
+  expect_identical(names(normalize(x)), names(x))
+  expect_identical(names(number_class(x)), names(x))
+  expect_identical(names(adjusted(x)), names(x))
+  expect_identical(names(is_zero(x)), names(x))
+  expect_identical(names(is.finite(x)), names(x))
+  expect_identical(names(same_quantum(x, decimal("1.00"))), names(x))
+  expect_identical(names(fma(x, decimal("2"), decimal("1"))), names(x))
 })
 
 test_that("same_quantum compares the vectors' shared scales", {

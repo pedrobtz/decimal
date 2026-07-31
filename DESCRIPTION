@@ -14,7 +14,7 @@ Authors@R:
         comment = "Vendored 'mpdecimal' library in src/mpdecimal; see inst/COPYRIGHTS."
       )
     )
-Description: Arbitrary-precision decimal vectors that store values exactly,
+Description: Arbitrary-precision vectors with an exact decimal representation,
     avoiding the rounding surprises of binary floating point. Built on the
     'mpdecimal' C library, arithmetic is governed by an explicit decimal
     context controlling precision, rounding, and signalling, and vectors
@@ -23,9 +23,6 @@ Description: Arbitrary-precision decimal vectors that store values exactly,
     infinities, and NaNs are supported throughout.
 License: MIT + file LICENSE
 Language: en-US
-URL: https://pedrobtz.github.io/decimal/,
-    https://github.com/pedrobtz/decimal
-BugReports: https://github.com/pedrobtz/decimal/issues
 Depends:
     R (>= 4.2.0)
 Imports:

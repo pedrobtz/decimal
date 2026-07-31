@@ -41,16 +41,37 @@ test_that("scale can be set explicitly and rescaled after construction", {
   expect_identical(as.character(decimal("1.256", scale = 2L)), "1.26")
 })
 
+test_that("promotion to a finer shared scale is exact and context-free", {
+  old <- get_decimal_context()
+  on.exit(set_decimal_context(old), add = TRUE)
+  set_decimal_context(decimal_context(precision = 1L))
+  clear_decimal_flags()
+
+  expect_identical(
+    decimal(c("1.2", "1.23")),
+    decimal(c("1.20", "1.23"), scale = 2L)
+  )
+  expect_identical(
+    vctrs::vec_c(decimal("1.2"), decimal("1.23")),
+    decimal(c("1.20", "1.23"), scale = 2L)
+  )
+
+  x <- decimal(c("1.2", "3.4"))
+  x[2] <- decimal("1.23")
+  expect_identical(x, decimal(c("1.20", "1.23"), scale = 2L))
+  expect_identical(decimal_flags(), character())
+})
+
 test_that("double conversion requires an explicit scale", {
   withr::local_options(decimal.default_scale = NULL)
 
   expect_error(
     decimal_from_double(0.1),
-    "`scale` must be provided for exact double conversion"
+    "`scale` must be provided for double conversion"
   )
   expect_error(
     as_decimal(0.1),
-    "`scale` must be provided for exact double conversion"
+    "`scale` must be provided for double conversion"
   )
 
   expect_identical(
@@ -109,6 +130,8 @@ test_that("decimal formatting and reverse coercions behave as specified", {
   x <- decimal(c("1.2300", "-0", "NaN", NA_character_))
 
   expect_identical(format(x), c("1.2300", "-0.0000", "NaN", NA_character_))
+  expect_error(format(x, scientific = TRUE), "`...` must be empty")
+  expect_error(format(x, engineering = 1), "`engineering` must be")
   expect_identical(
     format(decimal_from_double(0.000000123, scale = 20), engineering = TRUE),
     "123.00000000000e-9"
@@ -135,6 +158,17 @@ test_that("decimal formatting and reverse coercions behave as specified", {
     ),
     "Lossy conversion from `decimal` to `integer`"
   )
+})
+
+test_that("constructors, formatting, and coercions preserve names", {
+  input <- c(a = "1.20", b = "2.00")
+  x <- decimal(input)
+
+  expect_identical(names(x), names(input))
+  expect_identical(names(format(x)), names(input))
+  expect_identical(names(as.character(x)), names(input))
+  expect_identical(names(suppressWarnings(as.double(x))), names(input))
+  expect_identical(names(suppressWarnings(as.integer(x))), names(input))
 })
 
 test_that("vec_ptype labels and casts are defined", {

@@ -63,24 +63,31 @@ decimal_infer_scale <- function(x) {
 # finite quantum against an infinite operand as invalid, which would
 # otherwise trap on values that have no scale to begin with.
 #
-# Elements already at `scale` are left untouched rather than round-tripped
-# through native quantize: construction must stay exact and independent of
-# the active context, and quantize is a context-precision-consuming
-# operation. Only elements that actually need rescaling touch the native
-# kernel.
+# Promotion to a finer scale only appends significant zeros, so it is exact
+# and independent of the active arithmetic context. Reduction to a coarser
+# scale is a real quantize operation and therefore uses that context.
 decimal_rescale_strings <- function(values, scale) {
   current <- decimal_string_scale(values)
-  needs_rescale <- !is.na(current) & current != scale
-  if (!any(needs_rescale)) {
+  needs_padding <- !is.na(current) & current < scale
+  needs_rounding <- !is.na(current) & current > scale
+  if (!any(needs_padding) && !any(needs_rounding)) {
     return(values)
   }
 
   out <- values
-  quantum <- rep_len(decimal_quantum_string(-scale), sum(needs_rescale))
-  out[needs_rescale] <- .decimal_quantize_strings(
-    values[needs_rescale],
-    quantum
-  )
+  if (any(needs_padding)) {
+    out[needs_padding] <- .decimal_rescale_exact_strings(
+      values[needs_padding],
+      -scale
+    )
+  }
+  if (any(needs_rounding)) {
+    quantum <- rep_len(decimal_quantum_string(-scale), sum(needs_rounding))
+    out[needs_rounding] <- .decimal_quantize_strings(
+      values[needs_rounding],
+      quantum
+    )
+  }
   out
 }
 
@@ -89,7 +96,13 @@ decimal_set_scale <- function(x, scale) {
   if (identical(decimal_scale(x), scale)) {
     return(x)
   }
-  new_decimal(decimal_rescale_strings(vctrs::vec_data(x), scale), scale = scale)
+  decimal_restore_names(
+    new_decimal(
+      decimal_rescale_strings(vctrs::vec_data(x), scale),
+      scale = scale
+    ),
+    names(x)
+  )
 }
 
 decimal_abort_unsupported <- function(x, arg = "x") {
@@ -187,8 +200,27 @@ decimal_compare_input <- function(x, arg) {
   )
 }
 
-decimal_new_result <- function(x, scale) {
-  new_decimal(decimal_rescale_strings(x, scale), scale = scale)
+decimal_restore_names <- function(x, result_names) {
+  if (!is.null(result_names)) {
+    names(x) <- result_names
+  }
+  x
+}
+
+decimal_recycle_common <- function(...) {
+  inputs <- list(...)
+  sizes <- vapply(inputs, vctrs::vec_size, integer(1))
+  values <- do.call(vctrs::vec_recycle_common, inputs)
+  source <- which.max(sizes)
+
+  list(values = values, names = names(values[[source]]))
+}
+
+decimal_new_result <- function(x, scale, names = NULL) {
+  decimal_restore_names(
+    new_decimal(decimal_rescale_strings(x, scale), scale = scale),
+    names
+  )
 }
 
 decimal_binary_arith <- function(op, x, y) {
@@ -201,36 +233,42 @@ decimal_binary_arith <- function(op, x, y) {
   # computed and can itself exceed the context's precision (observed as a
   # spurious `invalid_operation` on ordinary context-constrained rounding,
   # e.g. `decimal("1.25") + decimal("0")` under `precision = 2`).
-  args <- vctrs::vec_recycle_common(
+  recycled <- decimal_recycle_common(
     decimal_arith_input(x, "x"),
     decimal_arith_input(y, "y")
   )
+  args <- recycled$values
   raw <- .decimal_binary_op_strings(
     vctrs::vec_data(args[[1]]),
     vctrs::vec_data(args[[2]]),
     op
   )
-  decimal_new_result(raw, decimal_infer_scale(raw))
+  decimal_new_result(raw, decimal_infer_scale(raw), recycled$names)
 }
 
 decimal_unary_arith <- function(op, x) {
   x <- decimal_arith_input(x, "x")
   decimal_new_result(
     .decimal_unary_op_strings(vctrs::vec_data(x), op),
-    decimal_scale(x)
+    decimal_scale(x),
+    names(x)
   )
 }
 
 decimal_compare <- function(op, x, y) {
-  args <- vctrs::vec_recycle_common(
+  recycled <- decimal_recycle_common(
     decimal_compare_input(x, "x"),
     decimal_compare_input(y, "y")
   )
+  args <- recycled$values
 
-  .decimal_compare_strings(
-    vctrs::vec_data(args[[1]]),
-    vctrs::vec_data(args[[2]]),
-    op
+  decimal_restore_names(
+    .decimal_compare_strings(
+      vctrs::vec_data(args[[1]]),
+      vctrs::vec_data(args[[2]]),
+      op
+    ),
+    recycled$names
   )
 }
 
@@ -259,7 +297,7 @@ decimal_unary_math <- function(x, op, scale = NULL) {
   # so inferring the target from what it actually produced preserves that
   # precision instead of collapsing to `x`'s (often much coarser) scale.
   target <- if (is.null(scale)) decimal_infer_scale(raw) else scale
-  decimal_new_result(raw, target)
+  decimal_new_result(raw, target, names(x))
 }
 
 decimal_quantum_string <- function(exponent) {
@@ -267,16 +305,20 @@ decimal_quantum_string <- function(exponent) {
 }
 
 decimal_quantize <- function(x, quantum) {
-  args <- vctrs::vec_recycle_common(
+  recycled <- decimal_recycle_common(
     decimal_math_input(x, "x"),
     decimal_math_input(quantum, "quantum")
   )
+  args <- recycled$values
   dx <- args[[1]]
   dq <- args[[2]]
 
-  new_decimal(
-    .decimal_quantize_strings(vctrs::vec_data(dx), vctrs::vec_data(dq)),
-    scale = decimal_scale(dq)
+  decimal_restore_names(
+    new_decimal(
+      .decimal_quantize_strings(vctrs::vec_data(dx), vctrs::vec_data(dq)),
+      scale = decimal_scale(dq)
+    ),
+    recycled$names
   )
 }
 
@@ -366,9 +408,11 @@ decimal_extrema <- function(..., na.rm = FALSE, which = c("min", "max")) {
 #'
 #' `decimal()` creates an immutable decimal vector backed by exact strings, at
 #' a single shared scale (number of fractional digits) for the whole vector.
-#' Character and integer inputs are converted exactly. Double inputs use the
-#' exact IEEE 754 binary value and require either an explicit `scale` or the
-#' `decimal.default_scale` option.
+#' Character and integer inputs are parsed exactly. Promotion to a finer
+#' shared scale only appends zeros and is context-free; a requested coarser
+#' scale quantizes using the active context. Double inputs are decoded from
+#' their exact IEEE 754 binary value and require either an explicit `scale` or
+#' the `decimal.default_scale` option before quantization.
 #'
 #' When `scale` is `NULL`, `getOption("decimal.default_scale")` is used when
 #' set. Otherwise, character input infers the largest number of fractional
@@ -409,9 +453,11 @@ is_decimal <- function(x) {
 #'
 #' `as_decimal()` is the conversion generic for decimal vectors. Character
 #' values are parsed exactly, integer values are converted exactly, and
-#' existing decimal vectors are returned or rescaled. Double values are
-#' converted from their exact IEEE 754 representation and therefore require
-#' an explicit or globally configured scale.
+#' existing decimal vectors are returned or rescaled. Promotion to a finer
+#' shared scale is exact and context-free; reduction to a coarser scale is
+#' quantized. Double values are decoded from their exact IEEE 754
+#' representation and therefore require an explicit or globally configured
+#' scale before quantization.
 #'
 #' When `scale` is `NULL`, `getOption("decimal.default_scale")` is used when
 #' set. Without that option, character input uses the largest number of
@@ -451,7 +497,10 @@ as_decimal.character <- function(x, scale = NULL) {
   } else {
     scale
   }
-  new_decimal(decimal_rescale_strings(canon, scale), scale = scale)
+  decimal_restore_names(
+    new_decimal(decimal_rescale_strings(canon, scale), scale = scale),
+    names(x)
+  )
 }
 
 #' @rdname as_decimal
@@ -459,7 +508,10 @@ as_decimal.character <- function(x, scale = NULL) {
 as_decimal.integer <- function(x, scale = NULL) {
   scale <- decimal_resolve_scale(scale)
   scale <- if (is.null(scale)) 0L else scale
-  new_decimal(decimal_rescale_strings(as.character(x), scale), scale = scale)
+  decimal_restore_names(
+    new_decimal(decimal_rescale_strings(as.character(x), scale), scale = scale),
+    names(x)
+  )
 }
 
 #' @rdname as_decimal
@@ -474,14 +526,14 @@ as_decimal.default <- function(x, scale = NULL) {
   decimal_abort_unsupported(x)
 }
 
-#' Exact conversion from double
+#' Controlled conversion from double
 #'
-#' Converts each IEEE 754 double to its exact decimal value. This differs from
-#' parsing a character literal such as `"0.1"`. Because the exact binary value
-#' of a double can require dozens of fractional digits, a scale must be given
-#' explicitly or configured with `options(decimal.default_scale = )`. The
-#' result is quantized to that scale using the active context's rounding and
-#' trap settings.
+#' Decodes each IEEE 754 double to its exact decimal value, then quantizes that
+#' value to the requested scale. This differs from parsing a character literal
+#' such as `"0.1"`. Because the exact binary value of a double can require
+#' dozens of fractional digits, a scale must be given explicitly or configured
+#' with `options(decimal.default_scale = )`. Quantization uses the active
+#' context's rounding and trap settings.
 #'
 #' @param x A double vector.
 #' @param scale An integer scalar giving the number of fractional digits to
@@ -500,15 +552,18 @@ decimal_from_double <- function(x, scale = NULL) {
   if (is.null(scale)) {
     rlang::abort(
       paste0(
-        "`scale` must be provided for exact double conversion, or set ",
+        "`scale` must be provided for double conversion, or set ",
         "`options(decimal.default_scale = )`."
       )
     )
   }
 
-  new_decimal(
-    decimal_rescale_strings(.decimal_from_double_strings(x), scale),
-    scale = scale
+  decimal_restore_names(
+    new_decimal(
+      decimal_rescale_strings(.decimal_from_double_strings(x), scale),
+      scale = scale
+    ),
+    names(x)
   )
 }
 
@@ -524,32 +579,37 @@ NA_decimal_ <- new_decimal(NA_character_)
 
 #' @export
 format.decimal <- function(x, ..., engineering = FALSE) {
+  rlang::check_dots_empty()
+  engineering <- decimal_scalar_flag(engineering, "engineering")
   values <- vctrs::vec_data(x)
 
-  if (isTRUE(engineering)) {
+  out <- if (engineering) {
     .decimal_format_strings(values, style = "eng")
   } else {
     values
   }
+
+  decimal_restore_names(out, names(x))
 }
 
 #' @export
 as.character.decimal <- function(x, ...) {
-  vctrs::vec_data(x)
+  rlang::check_dots_empty()
+  decimal_restore_names(vctrs::vec_data(x), names(x))
 }
 
 #' @export
 as.double.decimal <- function(x, ...) {
   out <- .decimal_to_double_strings(vctrs::vec_data(x))
   decimal_warn_lossy(decimal_lossy_double(x, out), "double")
-  out
+  decimal_restore_names(out, names(x))
 }
 
 #' @export
 as.integer.decimal <- function(x, ...) {
   out <- .decimal_to_integer_strings(vctrs::vec_data(x))
   decimal_warn_lossy(decimal_lossy_integer(x, out), "integer")
-  out
+  decimal_restore_names(out, names(x))
 }
 
 #' @export
@@ -654,6 +714,14 @@ vec_cast.default.decimal <- function(x, to, ..., x_arg = "", to_arg = "") {
   vctrs::vec_default_cast(x, to, ..., x_arg = x_arg, to_arg = to_arg)
 }
 
+#' @export
+`[<-.decimal` <- function(x, i, value) {
+  ptype <- vctrs::vec_ptype_common(x, value)
+  x <- vctrs::vec_cast(x, ptype)
+  value <- vctrs::vec_cast(value, ptype)
+  vctrs::vec_assign(x, i, value)
+}
+
 #' @exportS3Method pillar::pillar_shaft
 pillar_shaft.decimal <- function(x, ...) {
   pillar::new_pillar_shaft_simple(format(x), align = "right")
@@ -754,17 +822,26 @@ vec_arith.numeric.decimal <- function(op, x, y, ...) {
 
 #' @export
 vec_proxy_equal.decimal <- function(x, ...) {
-  .decimal_equal_proxy_strings(vctrs::vec_data(x))
+  decimal_restore_names(
+    .decimal_equal_proxy_strings(vctrs::vec_data(x)),
+    names(x)
+  )
 }
 
 #' @export
 vec_proxy_compare.decimal <- function(x, ...) {
-  .decimal_order_proxy_strings(vctrs::vec_data(x))
+  decimal_restore_names(
+    .decimal_order_proxy_strings(vctrs::vec_data(x)),
+    names(x)
+  )
 }
 
 #' @export
 vec_proxy_order.decimal <- function(x, ...) {
-  .decimal_order_proxy_strings(vctrs::vec_data(x))
+  decimal_restore_names(
+    .decimal_order_proxy_strings(vctrs::vec_data(x)),
+    names(x)
+  )
 }
 
 #' @export
@@ -904,7 +981,15 @@ signif.decimal <- function(x, digits = 6) {
   } else {
     max(-exponents, na.rm = TRUE)
   }
-  decimal_new_result(raw, target_scale)
+  decimal_new_result(raw, target_scale, names(x))
+}
+
+decimal_named_predicate <- function(x, predicate) {
+  x <- decimal_math_input(x)
+  decimal_restore_names(
+    .decimal_predicate_strings(vctrs::vec_data(x), predicate),
+    names(x)
+  )
 }
 
 #' Identify quiet NaN values
@@ -919,7 +1004,7 @@ signif.decimal <- function(x, digits = 6) {
 #' is_qnan(decimal(c("NaN", "sNaN", "1")))
 #' @export
 is_qnan <- function(x) {
-  .decimal_predicate_strings(vctrs::vec_data(decimal_math_input(x)), "qnan")
+  decimal_named_predicate(x, "qnan")
 }
 
 #' Identify signaling NaN values
@@ -934,7 +1019,7 @@ is_qnan <- function(x) {
 #' is_snan(decimal(c("sNaN", "NaN", "1")))
 #' @export
 is_snan <- function(x) {
-  .decimal_predicate_strings(vctrs::vec_data(decimal_math_input(x)), "snan")
+  decimal_named_predicate(x, "snan")
 }
 
 #' Identify normal decimal values
@@ -950,7 +1035,7 @@ is_snan <- function(x) {
 #' is_normal(decimal(c("1", "0", "Infinity")))
 #' @export
 is_normal <- function(x) {
-  .decimal_predicate_strings(vctrs::vec_data(decimal_math_input(x)), "normal")
+  decimal_named_predicate(x, "normal")
 }
 
 #' Identify subnormal decimal values
@@ -970,10 +1055,7 @@ is_normal <- function(x) {
 #' )
 #' @export
 is_subnormal <- function(x) {
-  .decimal_predicate_strings(
-    vctrs::vec_data(decimal_math_input(x)),
-    "subnormal"
-  )
+  decimal_named_predicate(x, "subnormal")
 }
 
 #' Identify values with a negative sign
@@ -988,7 +1070,7 @@ is_subnormal <- function(x) {
 #' is_signed(decimal(c("-2", "2", "-0", "0")))
 #' @export
 is_signed <- function(x) {
-  .decimal_predicate_strings(vctrs::vec_data(decimal_math_input(x)), "signed")
+  decimal_named_predicate(x, "signed")
 }
 
 #' Identify decimal zeros
@@ -1003,7 +1085,7 @@ is_signed <- function(x) {
 #' is_zero(decimal(c("0.00", "-0", "1")))
 #' @export
 is_zero <- function(x) {
-  .decimal_predicate_strings(vctrs::vec_data(decimal_math_input(x)), "zero")
+  decimal_named_predicate(x, "zero")
 }
 
 #' Classify decimal values
@@ -1022,7 +1104,11 @@ is_zero <- function(x) {
 #' number_class(decimal(c("1", "-0", "Infinity", "NaN")))
 #' @export
 number_class <- function(x) {
-  .decimal_classify_strings(vctrs::vec_data(decimal_math_input(x)))
+  x <- decimal_math_input(x)
+  decimal_restore_names(
+    .decimal_classify_strings(vctrs::vec_data(x)),
+    names(x)
+  )
 }
 
 #' Compute the adjusted exponent
@@ -1041,7 +1127,11 @@ number_class <- function(x) {
 #' adjusted(decimal(c("123", "0.01")))
 #' @export
 adjusted <- function(x) {
-  .decimal_adjusted_strings(vctrs::vec_data(decimal_math_input(x)))
+  x <- decimal_math_input(x)
+  decimal_restore_names(
+    .decimal_adjusted_strings(vctrs::vec_data(x)),
+    names(x)
+  )
 }
 
 #' Quantize decimal values to a scale
@@ -1089,7 +1179,7 @@ normalize <- function(x) {
   # significance.
   x <- decimal_math_input(x)
   reduced <- .decimal_math_op_strings(vctrs::vec_data(x), "normalize")
-  decimal_new_result(reduced, decimal_infer_scale(reduced))
+  decimal_new_result(reduced, decimal_infer_scale(reduced), names(x))
 }
 
 #' Fused multiply-add
@@ -1106,11 +1196,12 @@ normalize <- function(x) {
 #' fma(decimal("2"), decimal("3"), decimal("4"))
 #' @export
 fma <- function(x, y, z) {
-  args <- vctrs::vec_recycle_common(
+  recycled <- decimal_recycle_common(
     decimal_math_input(x, "x"),
     decimal_math_input(y, "y"),
     decimal_math_input(z, "z")
   )
+  args <- recycled$values
   dx <- args[[1]]
   dy <- args[[2]]
   dz <- args[[3]]
@@ -1124,7 +1215,7 @@ fma <- function(x, y, z) {
     vctrs::vec_data(dy),
     vctrs::vec_data(dz)
   )
-  decimal_new_result(raw, decimal_infer_scale(raw))
+  decimal_new_result(raw, decimal_infer_scale(raw), recycled$names)
 }
 
 #' Compare decimal vector scales
@@ -1140,13 +1231,17 @@ fma <- function(x, y, z) {
 #' same_quantum(decimal("1.00"), decimal("2.0"))
 #' @export
 same_quantum <- function(x, y) {
-  args <- vctrs::vec_recycle_common(
+  recycled <- decimal_recycle_common(
     decimal_math_input(x, "x"),
     decimal_math_input(y, "y")
   )
-  rep_len(
-    decimal_scale(args[[1]]) == decimal_scale(args[[2]]),
-    length(args[[1]])
+  args <- recycled$values
+  decimal_restore_names(
+    rep_len(
+      decimal_scale(args[[1]]) == decimal_scale(args[[2]]),
+      length(args[[1]])
+    ),
+    recycled$names
   )
 }
 
@@ -1193,20 +1288,32 @@ max.decimal <- function(x, ..., na.rm = FALSE) {
 
 #' @export
 is.na.decimal <- function(x) {
-  .decimal_predicate_strings(vctrs::vec_data(x), "na")
+  decimal_restore_names(
+    .decimal_predicate_strings(vctrs::vec_data(x), "na"),
+    names(x)
+  )
 }
 
 #' @export
 is.nan.decimal <- function(x) {
-  .decimal_predicate_strings(vctrs::vec_data(x), "nan")
+  decimal_restore_names(
+    .decimal_predicate_strings(vctrs::vec_data(x), "nan"),
+    names(x)
+  )
 }
 
 #' @export
 is.finite.decimal <- function(x) {
-  .decimal_predicate_strings(vctrs::vec_data(x), "finite")
+  decimal_restore_names(
+    .decimal_predicate_strings(vctrs::vec_data(x), "finite"),
+    names(x)
+  )
 }
 
 #' @export
 is.infinite.decimal <- function(x) {
-  .decimal_predicate_strings(vctrs::vec_data(x), "infinite")
+  decimal_restore_names(
+    .decimal_predicate_strings(vctrs::vec_data(x), "infinite"),
+    names(x)
+  )
 }

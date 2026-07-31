@@ -20,8 +20,9 @@ single integer `scale` attribute for the entire vector.
 - Signed zero, positive and negative infinity, qNaN, and sNaN are stored as
   decimal strings.
 - R missing values use `NA_character_`, distinct from decimal NaNs.
-- Combining vectors promotes them to a common scale. Rescaling uses native
-  quantization and the active context.
+- Combining and assigning vectors promotes them to a common scale. Promotion
+  to a finer scale uses exact, context-free native padding; reduction to a
+  coarser requested scale uses native quantization and the active context.
 - Character and integer construction is exact. Double conversion reconstructs
   the exact IEEE 754 value in C, then quantizes to a required scale.
 - Native kernels parse whole vectors into temporary `mpd_t` values, operate,

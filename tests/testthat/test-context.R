@@ -12,7 +12,6 @@ test_that("default context matches roadmap defaults", {
   )
   expect_identical(ctx$flags, character())
   expect_identical(ctx$clamp, FALSE)
-  expect_identical(ctx$allcr, TRUE)
 })
 
 test_that("decimal_context validates scalar fields and signal names", {
@@ -21,7 +20,32 @@ test_that("decimal_context validates scalar fields and signal names", {
   expect_error(decimal_context(emin = 1L), "emin")
   expect_error(decimal_context(rounding = "bogus"), "must be one of")
   expect_error(decimal_context(traps = "bogus"), "unsupported signals")
+  expect_error(
+    decimal_context(traps = "division_undefined"),
+    "unsupported signals"
+  )
   expect_error(decimal_context(flags = c("rounded", NA_character_)), "without missing")
+})
+
+test_that("invalid-operation subconditions use the public grouped signal", {
+  old <- get_decimal_context()
+  on.exit(set_decimal_context(old), add = TRUE)
+  withr::local_options(decimal.report_flags = TRUE)
+
+  set_decimal_context(decimal_context())
+  expect_error(
+    decimal("0") / decimal("0"),
+    class = "decimal_invalid_operation"
+  )
+
+  set_decimal_context(decimal_context(traps = character()))
+  clear_decimal_flags()
+  expect_warning(
+    result <- decimal("0") / decimal("0"),
+    class = "decimal_flags_warning"
+  )
+  expect_identical(result, decimal("NaN"))
+  expect_identical(decimal_flags(), "invalid_operation")
 })
 
 test_that("set, with, and local context restore previous state", {

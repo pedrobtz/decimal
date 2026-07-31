@@ -24,12 +24,14 @@ API grouping.
 
 ## Behavioral Invariants
 
-- Character and integer construction is exact.
-- Double conversion reflects the exact IEEE 754 value and requires an explicit
-  `scale` or `options(decimal.default_scale = )`.
-- Scale is a vector property. Combining decimals promotes to a common scale.
-- Context affects operations and quantization, not the stored identity of a
-  value.
+- Character and integer parsing is exact. Promotion to a finer scale is exact
+  padding; an explicit coarser scale is a quantization request.
+- Double conversion decodes the exact IEEE 754 value, requires an explicit
+  `scale` or `options(decimal.default_scale = )`, and then quantizes.
+- Scale is a vector property. Combining or assigning decimals promotes to a
+  common scale without consulting the arithmetic context.
+- Context affects operations and explicit scale reduction, not exact parsing
+  or promotion to a finer scale.
 - Decimal and integer vectors may mix. Decimal and double or character vectors
   require explicit conversion.
 - R `NA` is distinct from qNaN and sNaN; signed zero, infinities, NaNs, and
@@ -37,6 +39,9 @@ API grouping.
 - Comparison, hashing, and ordering must never pass through double.
 - Native routines use quiet `mpd_q*` functions so R can aggregate and report
   signals safely.
+- Public signals follow the standard grouped conditions; internal libmpdec
+  invalid-operation subconditions are not separate public trap names.
+- Native correct-rounding mode is always enabled and is not user-configurable.
 
 ## Adding an Operation
 
@@ -55,7 +60,9 @@ Only promise behavior supported consistently by R semantics and libmpdec.
 
 ## Extension Priorities
 
-Release-level direction belongs in [Product Roadmap](roadmap.md). The full
-task sequence for advanced libmpdec operations belongs in
+Release-level direction belongs in [Product Roadmap](roadmap.md), with the
+committed next-release scope in
+[0.2.0 Release Plan](release-0.2.0-plan.md). The broader task sequence for
+advanced libmpdec operations belongs in
 [Feature Expansion Plan](feature-expansion-plan.md). Keep this document
-focused on current package contracts rather than duplicating either plan.
+focused on current package contracts rather than duplicating those plans.
