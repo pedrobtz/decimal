@@ -1,14 +1,18 @@
-## Submission
+## Resubmission
 
-This is a new submission.
+This is a resubmission. In this version I have:
+
+- added return-value documentation for `NA_decimal_`;
+- added a reference for the General Decimal Arithmetic model; and
+- reworded terms flagged by the incoming spell check.
 
 ## Test environments
 
-- local macOS, R 4.5.2
+- local macOS Tahoe 26.5.2, R 4.6.1
 
 ## R CMD check results
 
-0 errors | 0 warnings | 1 notes
+0 errors | 0 warnings | 0 notes
 
 ## Notes on the vendored 'mpdecimal' library
 
