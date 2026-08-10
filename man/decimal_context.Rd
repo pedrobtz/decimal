@@ -53,6 +53,11 @@ The warnings are purely informational; sticky flags accumulate either way.
 Set \code{options(decimal.report_flags = FALSE)} to silence them and rely on
 \code{\link[=decimal_flags]{decimal_flags()}} alone.
 
+Public signal names are \code{"clamped"}, \code{"division_by_zero"}, \code{"inexact"},
+\code{"invalid_operation"}, \code{"overflow"}, \code{"rounded"}, \code{"subnormal"}, and
+\code{"underflow"}. The standard \code{invalid_operation} condition groups
+lower-level invalid subconditions such as undefined division (\code{0 / 0}).
+
 A few operations are exempt from the warning because \code{inexact}/\code{rounded}
 is their guaranteed, expected outcome rather than a surprise:
 \code{\link[=quantize]{quantize()}} (and \code{round()}/\code{signif()}, built on it), and \code{sqrt()},
