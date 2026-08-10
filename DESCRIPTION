@@ -20,7 +20,9 @@ Description: Arbitrary-precision vectors with an exact decimal representation,
     context controlling precision, rounding, and signalling, and vectors
     integrate with 'vctrs' so they behave naturally in data frames, tibbles,
     summaries, and common numeric workflows. Missing values, signed zeros,
-    infinities, and NaNs are supported throughout.
+    infinities, and NaNs are supported throughout. The arithmetic model follows
+    Cowlishaw (2009) "General Decimal Arithmetic"
+    <https://speleotrove.com/decimal/decarith.html>.
 License: MIT + file LICENSE
 Language: en-US
 Depends:
