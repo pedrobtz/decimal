@@ -73,6 +73,11 @@ rely on
 [`decimal_flags()`](https://pedrobtz.github.io/decimal/reference/decimal_flags.md)
 alone.
 
+Public signal names are `"clamped"`, `"division_by_zero"`, `"inexact"`,
+`"invalid_operation"`, `"overflow"`, `"rounded"`, `"subnormal"`, and
+`"underflow"`. The standard `invalid_operation` condition groups
+lower-level invalid subconditions such as undefined division (`0 / 0`).
+
 A few operations are exempt from the warning because `inexact`/`rounded`
 is their guaranteed, expected outcome rather than a surprise:
 [`quantize()`](https://pedrobtz.github.io/decimal/reference/quantize.md)

@@ -8,9 +8,9 @@ A length-one missing decimal value.
 NA_decimal_
 ```
 
-## Format
+## Value
 
-A length-one `decimal` vector.
+A length-one `decimal` vector containing the typed R missing value.
 
 ## Examples
 

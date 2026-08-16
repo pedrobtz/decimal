@@ -108,6 +108,10 @@ also surfaced as a warning of class <code>decimal_flags_warning</code>.</p></li>
 </ul><p>The warnings are purely informational; sticky flags accumulate either way.
 Set <code>options(decimal.report_flags = FALSE)</code> to silence them and rely on
 <code><a href="decimal_flags.html">decimal_flags()</a></code> alone.</p>
+<p>Public signal names are <code>"clamped"</code>, <code>"division_by_zero"</code>, <code>"inexact"</code>,
+<code>"invalid_operation"</code>, <code>"overflow"</code>, <code>"rounded"</code>, <code>"subnormal"</code>, and
+<code>"underflow"</code>. The standard <code>invalid_operation</code> condition groups
+lower-level invalid subconditions such as undefined division (<code>0 / 0</code>).</p>
 <p>A few operations are exempt from the warning because <code>inexact</code>/<code>rounded</code>
 is their guaranteed, expected outcome rather than a surprise:
 <code><a href="quantize.html">quantize()</a></code> (and <code><a href="https://rdrr.io/r/base/Round.html" class="external-link">round()</a></code>/<code><a href="https://rdrr.io/r/base/Round.html" class="external-link">signif()</a></code>, built on it), and <code><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt()</a></code>,
