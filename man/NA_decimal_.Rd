@@ -3,11 +3,11 @@
 \name{NA_decimal_}
 \alias{NA_decimal_}
 \title{Missing decimal scalar}
-\format{
-A length-one \code{decimal} vector.
-}
 \usage{
 NA_decimal_
+}
+\value{
+A length-one \code{decimal} vector containing the typed R missing value.
 }
 \description{
 A length-one missing decimal value.

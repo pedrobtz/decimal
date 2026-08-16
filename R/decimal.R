@@ -571,7 +571,7 @@ decimal_from_double <- function(x, scale = NULL) {
 #'
 #' A length-one missing decimal value.
 #'
-#' @format A length-one `decimal` vector.
+#' @return A length-one `decimal` vector containing the typed R missing value.
 #' @examples
 #' c(decimal("1"), NA_decimal_)
 #' @export
