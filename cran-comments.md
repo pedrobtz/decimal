@@ -12,7 +12,17 @@ This is a resubmission. In this version I have:
 
 ## R CMD check results
 
-0 errors | 0 warnings | 0 notes
+0 errors | 0 warnings | 1 note
+
+```
+* checking CRAN incoming feasibility ... NOTE
+Maintainer: 'Pedro Baltazar <pedrobtz@gmail.com>'
+
+New submission
+```
+
+The incoming spell check may flag `Cowlishaw` in the Description field. This is
+the surname of the author of the newly added reference.
 
 ## Notes on the vendored 'mpdecimal' library
 
