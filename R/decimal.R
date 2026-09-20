@@ -32,23 +32,7 @@ decimal_resolve_scale <- function(scale) {
 # string: `coefficient digits after the point - exponent`. NA for elements
 # that are NA, infinities, or NaNs (they carry no fractional-digit count).
 decimal_string_scale <- function(x) {
-  m <- regmatches(
-    x,
-    regexec("^-?([0-9]+)(?:\\.([0-9]+))?(?:[eE]([+-]?[0-9]+))?$", x)
-  )
-
-  vapply(
-    m,
-    function(g) {
-      if (length(g) == 0L) {
-        return(NA_integer_)
-      }
-      frac <- if (nzchar(g[3])) nchar(g[3]) else 0L
-      expo <- if (nzchar(g[4])) as.integer(g[4]) else 0L
-      frac - expo
-    },
-    integer(1)
-  )
+  .decimal_string_scale(x)
 }
 
 decimal_infer_scale <- function(x) {

@@ -94,3 +94,54 @@ test_that("signals become sticky flags and traps raise classed conditions", {
     class = "decimal_division_by_zero"
   )
 })
+
+test_that("string scale counts fractional digits net of the exponent", {
+  expect_identical(
+    decimal:::.decimal_string_scale(
+      c("0", "123", "-123", "0.1", "1.23", "0.00", "1.500")
+    ),
+    c(0L, 0L, 0L, 1L, 2L, 2L, 3L)
+  )
+
+  # An exponent shifts the point, so the scale moves with it and may go negative
+  expect_identical(
+    decimal:::.decimal_string_scale(
+      c("1E+2", "1e+2", "1.23E+5", "1.23e-5", "0E+10", "1E+000")
+    ),
+    c(-2L, -2L, -3L, 7L, -10L, 0L)
+  )
+})
+
+test_that("string scale is NA where no fractional-digit count exists", {
+  # NA, infinities and NaNs carry no scale
+  expect_identical(
+    decimal:::.decimal_string_scale(
+      c(NA_character_, "Infinity", "-Infinity", "NaN", "-NaN", "sNaN")
+    ),
+    rep(NA_integer_, 6L)
+  )
+
+  # Forms that are not canonical decimal strings, including ones mpdecimal
+  # itself would accept, such as a leading "+", a bare ".5" or a trailing "1."
+  expect_identical(
+    decimal:::.decimal_string_scale(
+      c("", "abc", "1.2.3", "1,5", " 1.0", "1.0 ", "+1.0", "1.", ".5", "-.5",
+        "1e", "1e+")
+    ),
+    rep(NA_integer_, 12L)
+  )
+})
+
+test_that("string scale is NA when the exponent leaves integer range", {
+  expect_identical(
+    decimal:::.decimal_string_scale(
+      c("1E+2147483647", "1E-2147483647", "1E+2147483648", "1E-2147483648",
+        "1E+99999999999")
+    ),
+    c(-2147483647L, 2147483647L, NA_integer_, NA_integer_, NA_integer_)
+  )
+})
+
+test_that("string scale rejects a non-character input", {
+  expect_error(decimal:::.decimal_string_scale(1:3), "must be a character vector")
+})
