@@ -7,7 +7,9 @@
   error handling unwinds past the code that would have freed it. Parsing
   an invalid decimal string leaked every handle the operation held, and
   an allocation failure part-way through setting up an operation leaked
-  the handles already allocated.
+  the handles already allocated. An R allocation failure while storing a
+  result string leaked the formatted text too; that text is now released
+  under `R_UnwindProtect()`.
 
 - [`summary()`](https://rdrr.io/r/base/summary.html) now works on
   `decimal` vectors. It reports the same six statistics as
