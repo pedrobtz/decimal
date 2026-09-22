@@ -62,6 +62,20 @@ Comparison operators call native `mpdecimal` comparison directly. Equality and
 ordering proxies use normalized native keys, avoiding lossy conversion through
 double while retaining normal `vctrs` matching and sorting behavior.
 
+### Native Cleanup
+
+`Rf_error()` and a failed R allocation both unwind by `longjmp`, so any
+mpdecimal memory live at that moment leaks. Kernels follow three rules:
+
+- Helpers never raise. A helper returns a status or `NULL`, and the kernel
+  that owns the handles frees them before it reports.
+- A kernel allocates every handle it needs up front and checks them together,
+  so a failed second allocation cannot abandon the first.
+- No R allocation happens while native memory is live. A kernel frees its
+  handles as soon as the formatted text exists, then hands the text to
+  `decimal_mkchar_consume()`, which frees it under `R_UnwindProtect()` whether
+  `Rf_mkChar()` returns or unwinds.
+
 ## Boundaries
 
 - R owns missing-value propagation, type compatibility, vector recycling, and

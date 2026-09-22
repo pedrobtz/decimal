@@ -184,3 +184,69 @@ test_that("every kernel rejects an invalid decimal string and reports its index"
   expect_error(decimal:::.decimal_fma_strings(ok, bad, ok), msg)
   expect_error(decimal:::.decimal_fma_strings(ok, ok, bad), msg)
 })
+
+test_that("equality proxy keys reduce equal values to one key", {
+  expect_identical(
+    decimal:::.decimal_equal_proxy_strings(c(
+      "1.20",
+      "1.2",
+      "12E-1",
+      "0",
+      "-0",
+      "0.0E5",
+      "-1.500",
+      "NaN",
+      "sNaN",
+      "Infinity",
+      "-Infinity",
+      NA_character_
+    )),
+    c(
+      "1.2",
+      "1.2",
+      "1.2",
+      "0",
+      "0",
+      "0",
+      "-1.5",
+      "NaN",
+      "NaN",
+      "Infinity",
+      "-Infinity",
+      NA_character_
+    )
+  )
+})
+
+test_that("ordering proxy keys sort in numeric order under byte comparison", {
+  ascending <- c(
+    "-Infinity",
+    "-12345",
+    "-1E3",
+    "-999",
+    "-1.5",
+    "-1.05",
+    "-1",
+    "-0.001",
+    "-1E-10",
+    "0",
+    "1E-10",
+    "0.001",
+    "1",
+    "1.05",
+    "1.5",
+    "999",
+    "1E3",
+    "12345",
+    "Infinity",
+    "NaN"
+  )
+  shuffled <- rev(ascending)
+  keys <- decimal:::.decimal_order_proxy_strings(shuffled)
+
+  expect_identical(shuffled[order(keys, method = "radix")], ascending)
+  expect_identical(
+    decimal:::.decimal_order_proxy_strings(c("-0", "0.000", NA_character_)),
+    c("3/0", "3/0", NA_character_)
+  )
+})
