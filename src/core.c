@@ -81,6 +81,38 @@ static void decimal_del_if_allocated(mpd_t *dec) {
   }
 }
 
+/* An owned copy of `s` from the mpdecimal allocator, or NULL. The key builders
+ * return this for special values so that every key is freed the same way. */
+static char *decimal_string_copy(const char *s) {
+  size_t n = strlen(s) + 1;
+  char *copy = mpd_alloc(n, 1);
+
+  if (copy != NULL) {
+    memcpy(copy, s, n);
+  }
+
+  return copy;
+}
+
+/* Rf_mkChar() allocates, and an R allocation failure longjmps. A kernel frees
+ * its handles before calling this, so the mpdecimal string is the only native
+ * memory still live, and R_UnwindProtect() frees it whether Rf_mkChar()
+ * returns or unwinds. `cont` is the kernel's continuation token, made before
+ * the loop so that its own allocation cannot leak anything. */
+static SEXP decimal_mkchar_body(void *data) {
+  return Rf_mkChar((const char *)data);
+}
+
+static void decimal_mkchar_cleanup(void *data, Rboolean jump) {
+  (void)jump;
+  mpd_free(data);
+}
+
+static SEXP decimal_mkchar_consume(char *text, SEXP cont) {
+  return R_UnwindProtect(decimal_mkchar_body, text, decimal_mkchar_cleanup,
+                         text, cont);
+}
+
 static int decimal_rounding_from_name(const char *name) {
   int i;
 
@@ -271,22 +303,6 @@ typedef void (*decimal_unary_fn)(mpd_t *, const mpd_t *, const mpd_context_t *,
 typedef void (*decimal_binary_fn)(mpd_t *, const mpd_t *, const mpd_t *,
                                   const mpd_context_t *, uint32_t *);
 
-static char *decimal_digits_from_text(const char *text) {
-  size_t n = strlen(text);
-  char *digits = (char *)R_alloc(n + 2, sizeof(char));
-  size_t i;
-  size_t j = 0;
-
-  for (i = 0; i < n && text[i] != 'E' && text[i] != 'e'; ++i) {
-    if (text[i] >= '0' && text[i] <= '9') {
-      digits[j++] = text[i];
-    }
-  }
-
-  digits[j] = '\0';
-  return digits;
-}
-
 static void decimal_encode_i64_ascending(char out[21], mpd_ssize_t value) {
   uint64_t biased = ((uint64_t)(int64_t)value) ^ UINT64_C(0x8000000000000000);
   snprintf(out, 21, "%020llu", (unsigned long long)biased);
@@ -298,20 +314,24 @@ static void decimal_encode_i64_descending(char out[21], mpd_ssize_t value) {
   snprintf(out, 21, "%020llu", (unsigned long long)biased);
 }
 
-static char *decimal_equal_key(mpd_t *dec) {
+/* The key under which numerically equal values match: the reduced form, so
+ * "1.20" and "1.2" agree. Returns an owned string, or NULL on allocation
+ * failure. Never raises, because the caller still holds `dec`. */
+static char *decimal_equal_key(const mpd_t *dec) {
   mpd_context_t ctx;
   mpd_t *reduced;
   uint32_t status = 0;
   char *text;
 
   if (mpd_isnan(dec)) {
-    return "NaN";
+    return decimal_string_copy("NaN");
   }
   if (mpd_isinfinite(dec)) {
-    return mpd_isnegative(dec) ? "-Infinity" : "Infinity";
+    const char *name = mpd_isnegative(dec) ? "-Infinity" : "Infinity";
+    return decimal_string_copy(name);
   }
   if (mpd_iszero(dec)) {
-    return "0";
+    return decimal_string_copy("0");
   }
 
   mpd_maxcontext(&ctx);
@@ -319,49 +339,49 @@ static char *decimal_equal_key(mpd_t *dec) {
   ctx.status = 0;
   ctx.newtrap = 0;
 
-  reduced = decimal_qnew_checked();
-  mpd_qreduce(reduced, dec, &ctx, &status);
+  reduced = mpd_qnew();
+  if (reduced == NULL) {
+    return NULL;
+  }
 
+  mpd_qreduce(reduced, dec, &ctx, &status);
   if (status & MPD_Malloc_error) {
     mpd_del(reduced);
-    Rf_error("mpdecimal allocation failure during normalization");
+    return NULL;
   }
 
   text = mpd_to_sci(reduced, 0);
   mpd_del(reduced);
-
-  if (text == NULL) {
-    Rf_error("Unable to format normalized decimal");
-  }
-
   return text;
 }
 
-static char *decimal_order_key(mpd_t *dec) {
+/* A key whose byte order is numeric order: a class digit, the biased adjusted
+ * exponent, then the significant digits, complemented for negatives so that
+ * larger magnitudes sort first. The terminator sorts below any digit for
+ * positives and above for negatives, so a prefix orders correctly against a
+ * longer key. Returns an owned string, or NULL on allocation failure. Never
+ * raises, because the caller still holds `dec`. */
+static char *decimal_order_key(const mpd_t *dec) {
   mpd_context_t ctx;
   mpd_t *reduced;
   uint32_t status = 0;
   char *text;
-  char *digits;
   char exp_key[21];
   char *key;
-  size_t digits_len;
+  size_t digits_len = 0;
   size_t i;
+  size_t j;
+  int negative;
+  mpd_ssize_t adjexp;
 
   if (mpd_isnan(dec)) {
-    key = (char *)R_alloc(3, sizeof(char));
-    memcpy(key, "6/", 3);
-    return key;
+    return decimal_string_copy("6/");
   }
   if (mpd_isinfinite(dec)) {
-    key = (char *)R_alloc(3, sizeof(char));
-    memcpy(key, mpd_isnegative(dec) ? "1/" : "5/", 3);
-    return key;
+    return decimal_string_copy(mpd_isnegative(dec) ? "1/" : "5/");
   }
   if (mpd_iszero(dec)) {
-    key = (char *)R_alloc(4, sizeof(char));
-    memcpy(key, "3/0", 4);
-    return key;
+    return decimal_string_copy("3/0");
   }
 
   mpd_maxcontext(&ctx);
@@ -369,46 +389,56 @@ static char *decimal_order_key(mpd_t *dec) {
   ctx.status = 0;
   ctx.newtrap = 0;
 
-  reduced = decimal_qnew_checked();
-  mpd_qreduce(reduced, dec, &ctx, &status);
+  reduced = mpd_qnew();
+  if (reduced == NULL) {
+    return NULL;
+  }
 
+  mpd_qreduce(reduced, dec, &ctx, &status);
   if (status & MPD_Malloc_error) {
     mpd_del(reduced);
-    Rf_error("mpdecimal allocation failure during ordering");
+    return NULL;
   }
 
+  negative = mpd_isnegative(reduced);
+  adjexp = mpd_adjexp(reduced);
   text = mpd_to_sci(reduced, 0);
+  mpd_del(reduced);
   if (text == NULL) {
-    mpd_del(reduced);
-    Rf_error("Unable to format order proxy for decimal");
+    return NULL;
   }
 
-  digits = decimal_digits_from_text(text);
-  digits_len = strlen(digits);
-  key = (char *)R_alloc(1 + 20 + digits_len + 2, sizeof(char));
-
-  if (mpd_isnegative(reduced)) {
-    decimal_encode_i64_descending(exp_key, mpd_adjexp(reduced));
-    key[0] = '2';
-    memcpy(key + 1, exp_key, 20);
-
-    for (i = 0; i < digits_len; ++i) {
-      key[21 + i] = (char)('9' - (digits[i] - '0'));
+  for (i = 0; text[i] != '\0' && text[i] != 'E' && text[i] != 'e'; ++i) {
+    if (text[i] >= '0' && text[i] <= '9') {
+      ++digits_len;
     }
-
-    key[21 + digits_len] = ':';
-    key[22 + digits_len] = '\0';
-  } else {
-    decimal_encode_i64_ascending(exp_key, mpd_adjexp(reduced));
-    key[0] = '4';
-    memcpy(key + 1, exp_key, 20);
-    memcpy(key + 21, digits, digits_len);
-    key[21 + digits_len] = '/';
-    key[22 + digits_len] = '\0';
   }
+
+  key = mpd_alloc(1 + 20 + digits_len + 2, 1);
+  if (key == NULL) {
+    mpd_free(text);
+    return NULL;
+  }
+
+  if (negative) {
+    decimal_encode_i64_descending(exp_key, adjexp);
+    key[0] = '2';
+  } else {
+    decimal_encode_i64_ascending(exp_key, adjexp);
+    key[0] = '4';
+  }
+  memcpy(key + 1, exp_key, 20);
+
+  j = 21;
+  for (i = 0; text[i] != '\0' && text[i] != 'E' && text[i] != 'e'; ++i) {
+    if (text[i] >= '0' && text[i] <= '9') {
+      key[j++] = negative ? (char)('9' - (text[i] - '0')) : text[i];
+    }
+  }
+  key[j++] = negative ? ':' : '/';
+  key[j] = '\0';
 
   mpd_free(text);
-  mpd_del(reduced);
   return key;
 }
 
@@ -766,12 +796,14 @@ SEXP decimal_c_string_scale(SEXP x) {
 SEXP decimal_c_canonicalize_strings(SEXP x) {
   R_xlen_t i;
   SEXP out;
+  SEXP cont;
 
   if (TYPEOF(x) != STRSXP) {
     Rf_error("`x` must be a character vector");
   }
 
   out = PROTECT(Rf_allocVector(STRSXP, XLENGTH(x)));
+  cont = PROTECT(R_MakeUnwindCont());
 
   for (i = 0; i < XLENGTH(x); ++i) {
     mpd_t *dec;
@@ -794,19 +826,16 @@ SEXP decimal_c_canonicalize_strings(SEXP x) {
     }
 
     text = mpd_to_sci(dec, 0);
-
+    mpd_del(dec);
     if (text == NULL) {
-      mpd_del(dec);
       Rf_error("Unable to format decimal at element %lld",
                (long long)i + 1);
     }
 
-    SET_STRING_ELT(out, i, Rf_mkChar(text));
-    mpd_free(text);
-    mpd_del(dec);
+    SET_STRING_ELT(out, i, decimal_mkchar_consume(text, cont));
   }
 
-  UNPROTECT(1);
+  UNPROTECT(2);
   return out;
 }
 
@@ -828,6 +857,7 @@ SEXP decimal_c_classify_strings(SEXP x, SEXP precision, SEXP rounding,
   for (i = 0; i < XLENGTH(x); ++i) {
     mpd_t *dec;
     uint32_t parse_status = 0;
+    const char *name;
 
     if (i % 1024 == 0) {
       R_CheckUserInterrupt();
@@ -844,8 +874,9 @@ SEXP decimal_c_classify_strings(SEXP x, SEXP precision, SEXP rounding,
       decimal_abort_parse(parse_status, i);
     }
 
-    SET_STRING_ELT(out, i, Rf_mkChar(mpd_class(dec, &ctx)));
+    name = mpd_class(dec, &ctx);
     mpd_del(dec);
+    SET_STRING_ELT(out, i, Rf_mkChar(name));
   }
 
   UNPROTECT(1);
@@ -856,6 +887,7 @@ SEXP decimal_c_format_strings(SEXP x, SEXP style) {
   R_xlen_t i;
   int use_eng;
   SEXP out;
+  SEXP cont;
 
   if (TYPEOF(x) != STRSXP) {
     Rf_error("`x` must be a character vector");
@@ -866,6 +898,7 @@ SEXP decimal_c_format_strings(SEXP x, SEXP style) {
 
   use_eng = strcmp(CHAR(STRING_ELT(style, 0)), "eng") == 0;
   out = PROTECT(Rf_allocVector(STRSXP, XLENGTH(x)));
+  cont = PROTECT(R_MakeUnwindCont());
 
   for (i = 0; i < XLENGTH(x); ++i) {
     mpd_t *dec;
@@ -888,31 +921,30 @@ SEXP decimal_c_format_strings(SEXP x, SEXP style) {
     }
 
     text = use_eng ? mpd_to_eng(dec, 0) : mpd_to_sci(dec, 0);
-
+    mpd_del(dec);
     if (text == NULL) {
-      mpd_del(dec);
       Rf_error("Unable to format decimal at element %lld",
                (long long)i + 1);
     }
 
-    SET_STRING_ELT(out, i, Rf_mkChar(text));
-    mpd_free(text);
-    mpd_del(dec);
+    SET_STRING_ELT(out, i, decimal_mkchar_consume(text, cont));
   }
 
-  UNPROTECT(1);
+  UNPROTECT(2);
   return out;
 }
 
 SEXP decimal_c_from_double_strings(SEXP x) {
   R_xlen_t i;
   SEXP out;
+  SEXP cont;
 
   if (TYPEOF(x) != REALSXP) {
     Rf_error("`x` must be a double vector");
   }
 
   out = PROTECT(Rf_allocVector(STRSXP, XLENGTH(x)));
+  cont = PROTECT(R_MakeUnwindCont());
 
   for (i = 0; i < XLENGTH(x); ++i) {
     double value = REAL(x)[i];
@@ -949,19 +981,16 @@ SEXP decimal_c_from_double_strings(SEXP x) {
       }
 
       text = mpd_to_sci(dec, 0);
-
+      mpd_del(dec);
       if (text == NULL) {
-        mpd_del(dec);
         Rf_error("Unable to format exact double conversion");
       }
 
-      SET_STRING_ELT(out, i, Rf_mkChar(text));
-      mpd_free(text);
-      mpd_del(dec);
+      SET_STRING_ELT(out, i, decimal_mkchar_consume(text, cont));
     }
   }
 
-  UNPROTECT(1);
+  UNPROTECT(2);
   return out;
 }
 
@@ -1110,12 +1139,14 @@ SEXP decimal_c_to_integer_strings(SEXP x) {
 SEXP decimal_c_equal_proxy_strings(SEXP x) {
   R_xlen_t i;
   SEXP out;
+  SEXP cont;
 
   if (TYPEOF(x) != STRSXP) {
     Rf_error("`x` must be a character vector");
   }
 
   out = PROTECT(Rf_allocVector(STRSXP, XLENGTH(x)));
+  cont = PROTECT(R_MakeUnwindCont());
 
   for (i = 0; i < XLENGTH(x); ++i) {
     mpd_t *dec;
@@ -1138,27 +1169,29 @@ SEXP decimal_c_equal_proxy_strings(SEXP x) {
     }
 
     key = decimal_equal_key(dec);
-    SET_STRING_ELT(out, i, Rf_mkChar(key));
-    if (strcmp(key, "NaN") != 0 && strcmp(key, "0") != 0 &&
-        strcmp(key, "Infinity") != 0 && strcmp(key, "-Infinity") != 0) {
-      mpd_free(key);
-    }
     mpd_del(dec);
+    if (key == NULL) {
+      Rf_error("mpdecimal allocation failure during normalization");
+    }
+
+    SET_STRING_ELT(out, i, decimal_mkchar_consume(key, cont));
   }
 
-  UNPROTECT(1);
+  UNPROTECT(2);
   return out;
 }
 
 SEXP decimal_c_order_proxy_strings(SEXP x) {
   R_xlen_t i;
   SEXP out;
+  SEXP cont;
 
   if (TYPEOF(x) != STRSXP) {
     Rf_error("`x` must be a character vector");
   }
 
   out = PROTECT(Rf_allocVector(STRSXP, XLENGTH(x)));
+  cont = PROTECT(R_MakeUnwindCont());
 
   for (i = 0; i < XLENGTH(x); ++i) {
     mpd_t *dec;
@@ -1181,11 +1214,15 @@ SEXP decimal_c_order_proxy_strings(SEXP x) {
     }
 
     key = decimal_order_key(dec);
-    SET_STRING_ELT(out, i, Rf_mkChar(key));
     mpd_del(dec);
+    if (key == NULL) {
+      Rf_error("mpdecimal allocation failure during ordering");
+    }
+
+    SET_STRING_ELT(out, i, decimal_mkchar_consume(key, cont));
   }
 
-  UNPROTECT(1);
+  UNPROTECT(2);
   return out;
 }
 
@@ -1198,6 +1235,7 @@ SEXP decimal_c_unary_op_strings(SEXP x, SEXP op, SEXP precision, SEXP rounding,
   uint32_t trap_status = 0;
   int trap_index = -1;
   SEXP values;
+  SEXP cont;
   decimal_unary_fn fun;
 
   if (TYPEOF(x) != STRSXP) {
@@ -1215,6 +1253,7 @@ SEXP decimal_c_unary_op_strings(SEXP x, SEXP op, SEXP precision, SEXP rounding,
   decimal_context_from_args(&ctx, precision, rounding, emax, emin, traps, flags,
                             clamp, allcr);
   values = PROTECT(Rf_allocVector(STRSXP, XLENGTH(x)));
+  cont = PROTECT(R_MakeUnwindCont());
 
   for (i = 0; i < XLENGTH(x); ++i) {
     mpd_t *input;
@@ -1254,27 +1293,23 @@ SEXP decimal_c_unary_op_strings(SEXP x, SEXP op, SEXP precision, SEXP rounding,
     }
 
     text = mpd_to_sci(result, 0);
+    mpd_del(input);
+    mpd_del(result);
     if (text == NULL) {
-      mpd_del(input);
-      mpd_del(result);
       Rf_error("Unable to format decimal at element %lld",
                (long long)i + 1);
     }
 
-    SET_STRING_ELT(values, i, Rf_mkChar(text));
-    mpd_free(text);
+    SET_STRING_ELT(values, i, decimal_mkchar_consume(text, cont));
 
     aggregate_status |= status;
     if (trap_index < 0 && (status & ctx.traps) != 0) {
       trap_index = (int)i + 1;
       trap_status = status & ctx.traps;
     }
-
-    mpd_del(input);
-    mpd_del(result);
   }
 
-  UNPROTECT(1);
+  UNPROTECT(2);
   return decimal_result_list(values, aggregate_status, trap_status, trap_index);
 }
 
@@ -1288,6 +1323,7 @@ SEXP decimal_c_binary_op_strings(SEXP x, SEXP y, SEXP op, SEXP precision,
   uint32_t trap_status = 0;
   int trap_index = -1;
   SEXP values;
+  SEXP cont;
   decimal_binary_fn fun;
 
   if (TYPEOF(x) != STRSXP || TYPEOF(y) != STRSXP) {
@@ -1308,6 +1344,7 @@ SEXP decimal_c_binary_op_strings(SEXP x, SEXP y, SEXP op, SEXP precision,
   decimal_context_from_args(&ctx, precision, rounding, emax, emin, traps, flags,
                             clamp, allcr);
   values = PROTECT(Rf_allocVector(STRSXP, XLENGTH(x)));
+  cont = PROTECT(R_MakeUnwindCont());
 
   for (i = 0; i < XLENGTH(x); ++i) {
     mpd_t *lhs;
@@ -1353,29 +1390,24 @@ SEXP decimal_c_binary_op_strings(SEXP x, SEXP y, SEXP op, SEXP precision,
     }
 
     text = mpd_to_sci(result, 0);
+    mpd_del(lhs);
+    mpd_del(rhs);
+    mpd_del(result);
     if (text == NULL) {
-      mpd_del(lhs);
-      mpd_del(rhs);
-      mpd_del(result);
       Rf_error("Unable to format decimal at element %lld",
                (long long)i + 1);
     }
 
-    SET_STRING_ELT(values, i, Rf_mkChar(text));
-    mpd_free(text);
+    SET_STRING_ELT(values, i, decimal_mkchar_consume(text, cont));
 
     aggregate_status |= status;
     if (trap_index < 0 && (status & ctx.traps) != 0) {
       trap_index = (int)i + 1;
       trap_status = status & ctx.traps;
     }
-
-    mpd_del(lhs);
-    mpd_del(rhs);
-    mpd_del(result);
   }
 
-  UNPROTECT(1);
+  UNPROTECT(2);
   return decimal_result_list(values, aggregate_status, trap_status, trap_index);
 }
 
@@ -1506,6 +1538,7 @@ SEXP decimal_c_math_op_strings(SEXP x, SEXP op, SEXP precision, SEXP rounding,
   uint32_t trap_status = 0;
   int trap_index = -1;
   SEXP values;
+  SEXP cont;
   const char *op_name;
   decimal_unary_fn fun;
 
@@ -1521,6 +1554,7 @@ SEXP decimal_c_math_op_strings(SEXP x, SEXP op, SEXP precision, SEXP rounding,
   decimal_context_from_args(&ctx, precision, rounding, emax, emin, traps, flags,
                             clamp, allcr);
   values = PROTECT(Rf_allocVector(STRSXP, XLENGTH(x)));
+  cont = PROTECT(R_MakeUnwindCont());
 
   for (i = 0; i < XLENGTH(x); ++i) {
     mpd_t *input;
@@ -1570,27 +1604,23 @@ SEXP decimal_c_math_op_strings(SEXP x, SEXP op, SEXP precision, SEXP rounding,
     }
 
     text = mpd_to_sci(result, 0);
+    mpd_del(input);
+    mpd_del(result);
     if (text == NULL) {
-      mpd_del(input);
-      mpd_del(result);
       Rf_error("Unable to format decimal at element %lld",
                (long long)i + 1);
     }
 
-    SET_STRING_ELT(values, i, Rf_mkChar(text));
-    mpd_free(text);
+    SET_STRING_ELT(values, i, decimal_mkchar_consume(text, cont));
 
     aggregate_status |= status;
     if (trap_index < 0 && (status & ctx.traps) != 0) {
       trap_index = (int)i + 1;
       trap_status = status & ctx.traps;
     }
-
-    mpd_del(input);
-    mpd_del(result);
   }
 
-  UNPROTECT(1);
+  UNPROTECT(2);
   return decimal_result_list(values, aggregate_status, trap_status, trap_index);
 }
 
@@ -1603,6 +1633,7 @@ SEXP decimal_c_quantize_strings(SEXP x, SEXP y, SEXP precision, SEXP rounding,
   uint32_t trap_status = 0;
   int trap_index = -1;
   SEXP values;
+  SEXP cont;
 
   if (TYPEOF(x) != STRSXP || TYPEOF(y) != STRSXP) {
     Rf_error("`x` and `y` must be character vectors");
@@ -1614,6 +1645,7 @@ SEXP decimal_c_quantize_strings(SEXP x, SEXP y, SEXP precision, SEXP rounding,
   decimal_context_from_args(&ctx, precision, rounding, emax, emin, traps, flags,
                             clamp, allcr);
   values = PROTECT(Rf_allocVector(STRSXP, XLENGTH(x)));
+  cont = PROTECT(R_MakeUnwindCont());
 
   for (i = 0; i < XLENGTH(x); ++i) {
     mpd_t *lhs;
@@ -1659,29 +1691,24 @@ SEXP decimal_c_quantize_strings(SEXP x, SEXP y, SEXP precision, SEXP rounding,
     }
 
     text = mpd_to_sci(result, 0);
+    mpd_del(lhs);
+    mpd_del(rhs);
+    mpd_del(result);
     if (text == NULL) {
-      mpd_del(lhs);
-      mpd_del(rhs);
-      mpd_del(result);
       Rf_error("Unable to format decimal at element %lld",
                (long long)i + 1);
     }
 
-    SET_STRING_ELT(values, i, Rf_mkChar(text));
-    mpd_free(text);
+    SET_STRING_ELT(values, i, decimal_mkchar_consume(text, cont));
 
     aggregate_status |= status;
     if (trap_index < 0 && (status & ctx.traps) != 0) {
       trap_index = (int)i + 1;
       trap_status = status & ctx.traps;
     }
-
-    mpd_del(lhs);
-    mpd_del(rhs);
-    mpd_del(result);
   }
 
-  UNPROTECT(1);
+  UNPROTECT(2);
   return decimal_result_list(values, aggregate_status, trap_status, trap_index);
 }
 
@@ -1690,6 +1717,7 @@ SEXP decimal_c_rescale_exact_strings(SEXP x, SEXP exponent) {
   mpd_context_t ctx;
   mpd_ssize_t target_exponent;
   SEXP values;
+  SEXP cont;
 
   if (TYPEOF(x) != STRSXP) {
     Rf_error("`x` must be a character vector");
@@ -1705,6 +1733,7 @@ SEXP decimal_c_rescale_exact_strings(SEXP x, SEXP exponent) {
   ctx.status = 0;
   ctx.newtrap = 0;
   values = PROTECT(Rf_allocVector(STRSXP, XLENGTH(x)));
+  cont = PROTECT(R_MakeUnwindCont());
 
   for (i = 0; i < XLENGTH(x); ++i) {
     mpd_t *input;
@@ -1744,20 +1773,17 @@ SEXP decimal_c_rescale_exact_strings(SEXP x, SEXP exponent) {
     }
 
     text = mpd_to_sci(result, 0);
+    mpd_del(input);
+    mpd_del(result);
     if (text == NULL) {
-      mpd_del(input);
-      mpd_del(result);
       Rf_error("Unable to format decimal at element %lld",
                (long long)i + 1);
     }
 
-    SET_STRING_ELT(values, i, Rf_mkChar(text));
-    mpd_free(text);
-    mpd_del(input);
-    mpd_del(result);
+    SET_STRING_ELT(values, i, decimal_mkchar_consume(text, cont));
   }
 
-  UNPROTECT(1);
+  UNPROTECT(2);
   return values;
 }
 
@@ -1770,6 +1796,7 @@ SEXP decimal_c_fma_strings(SEXP x, SEXP y, SEXP z, SEXP precision,
   uint32_t trap_status = 0;
   int trap_index = -1;
   SEXP values;
+  SEXP cont;
 
   if (TYPEOF(x) != STRSXP || TYPEOF(y) != STRSXP || TYPEOF(z) != STRSXP) {
     Rf_error("`x`, `y`, and `z` must be character vectors");
@@ -1781,6 +1808,7 @@ SEXP decimal_c_fma_strings(SEXP x, SEXP y, SEXP z, SEXP precision,
   decimal_context_from_args(&ctx, precision, rounding, emax, emin, traps, flags,
                             clamp, allcr);
   values = PROTECT(Rf_allocVector(STRSXP, XLENGTH(x)));
+  cont = PROTECT(R_MakeUnwindCont());
 
   for (i = 0; i < XLENGTH(x); ++i) {
     mpd_t *lhs;
@@ -1833,31 +1861,25 @@ SEXP decimal_c_fma_strings(SEXP x, SEXP y, SEXP z, SEXP precision,
     }
 
     text = mpd_to_sci(result, 0);
+    mpd_del(lhs);
+    mpd_del(rhs);
+    mpd_del(add);
+    mpd_del(result);
     if (text == NULL) {
-      mpd_del(lhs);
-      mpd_del(rhs);
-      mpd_del(add);
-      mpd_del(result);
       Rf_error("Unable to format decimal at element %lld",
                (long long)i + 1);
     }
 
-    SET_STRING_ELT(values, i, Rf_mkChar(text));
-    mpd_free(text);
+    SET_STRING_ELT(values, i, decimal_mkchar_consume(text, cont));
 
     aggregate_status |= status;
     if (trap_index < 0 && (status & ctx.traps) != 0) {
       trap_index = (int)i + 1;
       trap_status = status & ctx.traps;
     }
-
-    mpd_del(lhs);
-    mpd_del(rhs);
-    mpd_del(add);
-    mpd_del(result);
   }
 
-  UNPROTECT(1);
+  UNPROTECT(2);
   return decimal_result_list(values, aggregate_status, trap_status, trap_index);
 }
 
@@ -2045,6 +2067,7 @@ SEXP decimal_c_apply_context(SEXP x, SEXP precision, SEXP rounding, SEXP emax,
   uint32_t trap_status = 0;
   int trap_index = -1;
   SEXP values;
+  SEXP cont;
 
   if (TYPEOF(x) != STRSXP) {
     Rf_error("`x` must be a character vector");
@@ -2053,6 +2076,7 @@ SEXP decimal_c_apply_context(SEXP x, SEXP precision, SEXP rounding, SEXP emax,
   decimal_context_from_args(&ctx, precision, rounding, emax, emin, traps, flags,
                             clamp, allcr);
   values = PROTECT(Rf_allocVector(STRSXP, XLENGTH(x)));
+  cont = PROTECT(R_MakeUnwindCont());
 
   for (i = 0; i < XLENGTH(x); ++i) {
     mpd_t *input;
@@ -2092,27 +2116,23 @@ SEXP decimal_c_apply_context(SEXP x, SEXP precision, SEXP rounding, SEXP emax,
     }
 
     text = mpd_to_sci(result, 0);
+    mpd_del(input);
+    mpd_del(result);
     if (text == NULL) {
-      mpd_del(input);
-      mpd_del(result);
       Rf_error("Unable to format decimal at element %lld",
                (long long)i + 1);
     }
 
-    SET_STRING_ELT(values, i, Rf_mkChar(text));
-    mpd_free(text);
+    SET_STRING_ELT(values, i, decimal_mkchar_consume(text, cont));
 
     aggregate_status |= status;
     if (trap_index < 0 && (status & ctx.traps) != 0) {
       trap_index = (int)i + 1;
       trap_status = status & ctx.traps;
     }
-
-    mpd_del(input);
-    mpd_del(result);
   }
 
-  UNPROTECT(1);
+  UNPROTECT(2);
   return decimal_result_list(values, aggregate_status, trap_status, trap_index);
 }
 
@@ -2125,6 +2145,7 @@ SEXP decimal_c_divide_strings(SEXP x, SEXP y, SEXP precision, SEXP rounding,
   uint32_t trap_status = 0;
   int trap_index = -1;
   SEXP values;
+  SEXP cont;
 
   if (TYPEOF(x) != STRSXP || TYPEOF(y) != STRSXP) {
     Rf_error("`x` and `y` must be character vectors");
@@ -2136,6 +2157,7 @@ SEXP decimal_c_divide_strings(SEXP x, SEXP y, SEXP precision, SEXP rounding,
   decimal_context_from_args(&ctx, precision, rounding, emax, emin, traps, flags,
                             clamp, allcr);
   values = PROTECT(Rf_allocVector(STRSXP, XLENGTH(x)));
+  cont = PROTECT(R_MakeUnwindCont());
 
   for (i = 0; i < XLENGTH(x); ++i) {
     mpd_t *lhs;
@@ -2181,28 +2203,23 @@ SEXP decimal_c_divide_strings(SEXP x, SEXP y, SEXP precision, SEXP rounding,
     }
 
     text = mpd_to_sci(result, 0);
+    mpd_del(lhs);
+    mpd_del(rhs);
+    mpd_del(result);
     if (text == NULL) {
-      mpd_del(lhs);
-      mpd_del(rhs);
-      mpd_del(result);
       Rf_error("Unable to format decimal at element %lld",
                (long long)i + 1);
     }
 
-    SET_STRING_ELT(values, i, Rf_mkChar(text));
-    mpd_free(text);
+    SET_STRING_ELT(values, i, decimal_mkchar_consume(text, cont));
 
     aggregate_status |= status;
     if (trap_index < 0 && (status & ctx.traps) != 0) {
       trap_index = (int)i + 1;
       trap_status = status & ctx.traps;
     }
-
-    mpd_del(lhs);
-    mpd_del(rhs);
-    mpd_del(result);
   }
 
-  UNPROTECT(1);
+  UNPROTECT(2);
   return decimal_result_list(values, aggregate_status, trap_status, trap_index);
 }
