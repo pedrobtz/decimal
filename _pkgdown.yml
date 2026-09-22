@@ -3,6 +3,13 @@ url: https://pedrobtz.github.io/decimal/
 template:
   bootstrap: 5
 
+# `auto` reads the version in DESCRIPTION: a four-component development
+# version such as 0.1.0.9999 builds to /dev/ with an "unreleased" banner,
+# while a released three-component version builds to the site root. The
+# deploy step keeps `clean: false`, so the two live side by side.
+development:
+  mode: auto
+
 reference:
   - title: Decimal values
     contents:
