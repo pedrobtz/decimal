@@ -33,6 +33,8 @@ Read the documents relevant to a change before editing:
   session context, traps, and sticky flags.
 - [ADR 004](.agents/decisions/004-quiet-native-kernels.md) — native safety and
   signal aggregation.
+- [ADR 006](.agents/decisions/006-arrow-extension-type.md) — Arrow extension
+  type over decimal storage, and the plain-field escape hatch.
 - [ADR 005](.agents/decisions/005-arrow-string-cast-canonical.md) — trusting
   Arrow's decimal-to-string cast as canonical storage.
 

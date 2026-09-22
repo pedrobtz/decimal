@@ -449,11 +449,12 @@ is_decimal <- function(x) {
 #' double input raises an error. Quantization uses the active
 #' [decimal_context()].
 #'
-#' An Arrow `Array` or `ChunkedArray` of type `decimal128()` or `decimal256()`
-#' converts exactly, taking its scale from the Arrow type rather than from the
-#' values, so a chunk holding only whole numbers keeps its declared fractional
-#' digits. Any other Arrow type converts to an R vector first and then follows
-#' the rules above. See `vignette("arrow-decimal-types")`.
+#' An Arrow `Array` or `ChunkedArray` of any decimal type converts exactly,
+#' taking its scale from the Arrow type rather than from the values, so a
+#' chunk holding only whole numbers keeps its declared fractional digits. An
+#' Arrow integer array converts exactly at every width. Any other Arrow type
+#' converts to an R vector first and then follows the rules above. See
+#' [decimal_arrow] and `vignette("arrow-decimal-types")`.
 #'
 #' @param x A decimal, character, integer, or double vector, or an Arrow
 #'   `Array` or `ChunkedArray`.
@@ -568,6 +569,27 @@ decimal_from_double <- function(x, scale = NULL) {
 #' @export
 NA_decimal_ <- new_decimal(NA_character_)
 
+# arrow converts a plain decimal field to double and then reapplies the R
+# attributes it recorded for the column, which yields a double wearing the
+# decimal class. The native kernels refuse it; the formatting paths would
+# otherwise print rounded doubles as if they were exact.
+decimal_check_storage <- function(x) {
+  if (is.character(vctrs::vec_data(x))) {
+    return(invisible(x))
+  }
+  rlang::abort(c(
+    "`x` has the decimal class but holds doubles, not decimal strings.",
+    i = paste0(
+      "This happens when arrow converts a plain decimal field to double ",
+      "and reapplies the column's recorded R attributes."
+    ),
+    i = paste0(
+      "Read the table with `arrow_as_data_frame()`, or write the column as ",
+      "the extension type, the default; see `?decimal_arrow`."
+    )
+  ))
+}
+
 # `digits`, `na.encode` and `justify` are accepted and ignored: base's
 # `format.data.frame()` injects them into `...` for every column, so rejecting
 # them would make a decimal column impossible to print in a data frame. They
@@ -578,6 +600,7 @@ NA_decimal_ <- new_decimal(NA_character_)
 format.decimal <- function(x, ..., engineering = FALSE,
                            digits = NULL, na.encode = TRUE, justify = NULL) {
   rlang::check_dots_empty()
+  decimal_check_storage(x)
   engineering <- decimal_scalar_flag(engineering, "engineering")
   values <- vctrs::vec_data(x)
 
@@ -593,6 +616,7 @@ format.decimal <- function(x, ..., engineering = FALSE,
 #' @export
 as.character.decimal <- function(x, ...) {
   rlang::check_dots_empty()
+  decimal_check_storage(x)
   decimal_restore_names(vctrs::vec_data(x), names(x))
 }
 

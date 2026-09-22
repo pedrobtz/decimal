@@ -37,8 +37,10 @@ Imports:
 Suggests:
     arrow,
     covr,
+    dplyr,
     knitr,
     pillar,
+    R6,
     rmarkdown,
     tibble,
     testthat (>= 3.0.0)

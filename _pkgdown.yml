@@ -37,7 +37,9 @@ reference:
       - is_zero
   - title: Arrow interoperability
     contents:
+      - decimal_arrow
       - arrow_as_data_frame
+      - arrow_decimal_type
   - title: Contexts and signals
     contents:
       - decimal_context

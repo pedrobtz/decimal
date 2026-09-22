@@ -278,3 +278,10 @@ test_that("decimal columns print inside a base data frame", {
   # `format.data.frame()` wraps each formatted column in `AsIs`.
   expect_identical(as.character(format(df)$amount), c("1.25", "2.50", NA))
 })
+
+test_that("a decimal object that holds doubles is refused rather than printed", {
+  bad <- structure(c(1, 2), class = c("decimal", "vctrs_vctr"), scale = 2L)
+
+  expect_error(format(bad), "holds doubles")
+  expect_error(as.character(bad), "holds doubles")
+})

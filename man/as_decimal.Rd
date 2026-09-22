@@ -53,11 +53,12 @@ fractional digits found in the input, integer input uses scale zero, and
 double input raises an error. Quantization uses the active
 \code{\link[=decimal_context]{decimal_context()}}.
 
-An Arrow \code{Array} or \code{ChunkedArray} of type \code{decimal128()} or \code{decimal256()}
-converts exactly, taking its scale from the Arrow type rather than from the
-values, so a chunk holding only whole numbers keeps its declared fractional
-digits. Any other Arrow type converts to an R vector first and then follows
-the rules above. See \code{vignette("arrow-decimal-types")}.
+An Arrow \code{Array} or \code{ChunkedArray} of any decimal type converts exactly,
+taking its scale from the Arrow type rather than from the values, so a
+chunk holding only whole numbers keeps its declared fractional digits. An
+Arrow integer array converts exactly at every width. Any other Arrow type
+converts to an R vector first and then follows the rules above. See
+\link{decimal_arrow} and \code{vignette("arrow-decimal-types")}.
 }
 \examples{
 as_decimal(c("1.2", "3.45"))
