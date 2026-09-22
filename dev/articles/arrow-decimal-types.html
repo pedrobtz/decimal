@@ -77,9 +77,10 @@ packs a decimal into a fixed-width integer, while a <code>decimal</code>
 vector stores text and a shared scale
 (<code><a href="../articles/decimal-values.html">vignette("decimal-values")</a></code>).</p>
 <p>The bridge between them is the <strong>decimal string</strong>. Both
-sides can write one and read one exactly, which makes it a lossless
-interchange format. This vignette shows how to cross in both directions,
-and where the two type systems don’t quite line up.</p>
+sides write and read one exactly, which makes it a lossless interchange
+format, and the package uses it in both directions for you. This
+vignette shows the crossings and where the two type systems don’t quite
+line up.</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/pedrobtz/decimal" class="external-link">decimal</a></span><span class="op">)</span></span></code></pre></div>
 <div class="section level2">
@@ -125,45 +126,45 @@ through <code>double</code>:</p>
 cents entirely: <code>99999999999999999999.99</code> came back as
 <code>1e+20</code>. Twenty-two significant digits don’t fit in a double,
 which carries about sixteen.</p>
-<p>Cast to <code><a href="https://arrow.apache.org/docs/r/reference/data-type.html" class="external-link">arrow::string()</a></code> first, then build the decimal
-vector:</p>
+<p><code><a href="../reference/as_decimal.html">as_decimal()</a></code> takes the array directly and keeps every
+digit:</p>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu">decimal</span><span class="fu">::</span><span class="fu"><a href="../reference/decimal.html">decimal</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/vector.html" class="external-link">as.vector</a></span><span class="op">(</span><span class="va">a</span><span class="op">$</span><span class="fu">cast</span><span class="op">(</span><span class="fu">arrow</span><span class="fu">::</span><span class="fu"><a href="https://arrow.apache.org/docs/r/reference/data-type.html" class="external-link">string</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/as_decimal.html">as_decimal</a></span><span class="op">(</span><span class="va">a</span><span class="op">)</span></span>
 <span><span class="co">#&gt; &lt;decimal[3]&gt;</span></span>
 <span><span class="co">#&gt; [1] 100.05                  99999999999999999999.99 0.01</span></span></code></pre></div>
-<p>Every digit survives. The cast to string happens inside Arrow, in
-exact arithmetic, and <code><a href="../reference/decimal.html">decimal::decimal()</a></code> parses the text
-exactly — so <code>double</code> never enters the picture.</p>
+<p>No <code>double</code> is involved. Arrow casts the column to text in
+its own exact arithmetic, and that text is already the canonical form a
+<code>decimal</code> vector stores, so the values move across without
+being re-parsed. That makes the exact path about as fast as the lossy
+one.</p>
 <div class="section level3">
 <h3 id="scale-comes-along-for-free">Scale comes along for free<a class="anchor" aria-label="anchor" href="#scale-comes-along-for-free"></a>
 </h3>
-<p>An Arrow decimal type carries its own scale, and the string cast pads
-every value to it. That means the resulting vector’s scale already
-matches the source column, with nothing for you to specify:</p>
+<p>An Arrow decimal type carries its own scale, and
+<code><a href="../reference/as_decimal.html">as_decimal()</a></code> reads it off the type rather than guessing
+from the text. That matters when a column happens to hold only whole
+numbers — the declared cents survive anyway:</p>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">a</span><span class="op">$</span><span class="va">type</span><span class="op">$</span><span class="fu">scale</span><span class="op">(</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 2</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/attr.html" class="external-link">attr</a></span><span class="op">(</span><span class="fu">decimal</span><span class="fu">::</span><span class="fu"><a href="../reference/decimal.html">decimal</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/vector.html" class="external-link">as.vector</a></span><span class="op">(</span><span class="va">a</span><span class="op">$</span><span class="fu">cast</span><span class="op">(</span><span class="fu">arrow</span><span class="fu">::</span><span class="fu"><a href="https://arrow.apache.org/docs/r/reference/data-type.html" class="external-link">string</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span><span class="op">)</span><span class="op">)</span>, <span class="st">"scale"</span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="va">whole</span> <span class="op">&lt;-</span> <span class="fu">arrow</span><span class="fu">::</span><span class="va"><a href="https://arrow.apache.org/docs/r/reference/array-class.html" class="external-link">Array</a></span><span class="op">$</span><span class="fu">create</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"1"</span>, <span class="st">"2"</span><span class="op">)</span><span class="op">)</span><span class="op">$</span><span class="fu">cast</span><span class="op">(</span><span class="fu">arrow</span><span class="fu">::</span><span class="fu"><a href="https://arrow.apache.org/docs/r/reference/data-type.html" class="external-link">decimal128</a></span><span class="op">(</span><span class="fl">9</span>, <span class="fl">2</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="fu"><a href="../reference/as_decimal.html">as_decimal</a></span><span class="op">(</span><span class="va">whole</span><span class="op">)</span></span>
+<span><span class="co">#&gt; &lt;decimal[2]&gt;</span></span>
+<span><span class="co">#&gt; [1] 1.00 2.00</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/attr.html" class="external-link">attr</a></span><span class="op">(</span><span class="fu"><a href="../reference/as_decimal.html">as_decimal</a></span><span class="op">(</span><span class="va">whole</span><span class="op">)</span>, <span class="st">"scale"</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] 2</span></span></code></pre></div>
-<p>If you’d rather be explicit — or you want to pin the scale even when
-a chunk happens to contain only whole numbers — read it off the type and
-pass it along:</p>
+<p>Passing <code>scale</code> overrides the type, rescaling as usual —
+exactly when the scale grows, and by quantizing under the active
+[decimal_context()] when it shrinks:</p>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu">decimal</span><span class="fu">::</span><span class="fu"><a href="../reference/decimal.html">decimal</a></span><span class="op">(</span></span>
-<span>  <span class="fu"><a href="https://rdrr.io/r/base/vector.html" class="external-link">as.vector</a></span><span class="op">(</span><span class="va">a</span><span class="op">$</span><span class="fu">cast</span><span class="op">(</span><span class="fu">arrow</span><span class="fu">::</span><span class="fu"><a href="https://arrow.apache.org/docs/r/reference/data-type.html" class="external-link">string</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span><span class="op">)</span>,</span>
-<span>  scale <span class="op">=</span> <span class="va">a</span><span class="op">$</span><span class="va">type</span><span class="op">$</span><span class="fu">scale</span><span class="op">(</span><span class="op">)</span></span>
-<span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/as_decimal.html">as_decimal</a></span><span class="op">(</span><span class="va">a</span>, scale <span class="op">=</span> <span class="fl">4</span><span class="op">)</span></span>
 <span><span class="co">#&gt; &lt;decimal[3]&gt;</span></span>
-<span><span class="co">#&gt; [1] 100.05                  99999999999999999999.99 0.01</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] 100.0500                  99999999999999999999.9900</span></span>
+<span><span class="co">#&gt; [3] 0.0100</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="nulls-become-na">Nulls become <code>NA</code><a class="anchor" aria-label="anchor" href="#nulls-become-na"></a>
 </h3>
-<p>Arrow’s nulls survive the string cast as <code>NA</code>, and land as
-missing decimals:</p>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">b</span> <span class="op">&lt;-</span> <span class="fu">arrow</span><span class="fu">::</span><span class="va"><a href="https://arrow.apache.org/docs/r/reference/array-class.html" class="external-link">Array</a></span><span class="op">$</span><span class="fu">create</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"1.50"</span>, <span class="cn">NA</span>, <span class="st">"2.25"</span><span class="op">)</span><span class="op">)</span><span class="op">$</span><span class="fu">cast</span><span class="op">(</span><span class="fu">arrow</span><span class="fu">::</span><span class="fu"><a href="https://arrow.apache.org/docs/r/reference/data-type.html" class="external-link">decimal128</a></span><span class="op">(</span><span class="fl">9</span>, <span class="fl">2</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="fu">decimal</span><span class="fu">::</span><span class="fu"><a href="../reference/decimal.html">decimal</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/vector.html" class="external-link">as.vector</a></span><span class="op">(</span><span class="va">b</span><span class="op">$</span><span class="fu">cast</span><span class="op">(</span><span class="fu">arrow</span><span class="fu">::</span><span class="fu"><a href="https://arrow.apache.org/docs/r/reference/data-type.html" class="external-link">string</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/as_decimal.html">as_decimal</a></span><span class="op">(</span><span class="fu">arrow</span><span class="fu">::</span><span class="va"><a href="https://arrow.apache.org/docs/r/reference/array-class.html" class="external-link">Array</a></span><span class="op">$</span><span class="fu">create</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"1.50"</span>, <span class="cn">NA</span>, <span class="st">"2.25"</span><span class="op">)</span><span class="op">)</span><span class="op">$</span><span class="fu">cast</span><span class="op">(</span><span class="fu">arrow</span><span class="fu">::</span><span class="fu"><a href="https://arrow.apache.org/docs/r/reference/data-type.html" class="external-link">decimal128</a></span><span class="op">(</span><span class="fl">9</span>, <span class="fl">2</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt; &lt;decimal[3]&gt;</span></span>
 <span><span class="co">#&gt; [1] 1.50 &lt;NA&gt; 2.25</span></span></code></pre></div>
 </div>
@@ -171,9 +172,9 @@ missing decimals:</p>
 <h3 id="chunked-arrays-work-the-same-way">Chunked arrays work the same way<a class="anchor" aria-label="anchor" href="#chunked-arrays-work-the-same-way"></a>
 </h3>
 <p>A column read from Parquet or a dataset is usually a
-<code>ChunkedArray</code> rather than an <code>Array</code>. It casts
-the same way, and <code><a href="https://rdrr.io/r/base/vector.html" class="external-link">as.vector()</a></code> flattens the chunks into one
-character vector, so no per-chunk bookkeeping is needed:</p>
+<code>ChunkedArray</code> rather than an <code>Array</code>. It has its
+own <code><a href="../reference/as_decimal.html">as_decimal()</a></code> method, so no per-chunk bookkeeping is
+needed:</p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">cs</span> <span class="op">&lt;-</span> <span class="fu">arrow</span><span class="fu">::</span><span class="va"><a href="https://arrow.apache.org/docs/r/reference/ChunkedArray-class.html" class="external-link">ChunkedArray</a></span><span class="op">$</span><span class="fu">create</span><span class="op">(</span></span>
 <span>  <span class="fu">arrow</span><span class="fu">::</span><span class="va"><a href="https://arrow.apache.org/docs/r/reference/array-class.html" class="external-link">Array</a></span><span class="op">$</span><span class="fu">create</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"1.25"</span>, <span class="st">"2.50"</span><span class="op">)</span><span class="op">)</span><span class="op">$</span><span class="fu">cast</span><span class="op">(</span><span class="fu">arrow</span><span class="fu">::</span><span class="fu"><a href="https://arrow.apache.org/docs/r/reference/data-type.html" class="external-link">decimal128</a></span><span class="op">(</span><span class="fl">9</span>, <span class="fl">2</span><span class="op">)</span><span class="op">)</span>,</span>
@@ -181,7 +182,7 @@ character vector, so no per-chunk bookkeeping is needed:</p>
 <span><span class="op">)</span></span>
 <span><span class="va">cs</span><span class="op">$</span><span class="va">num_chunks</span></span>
 <span><span class="co">#&gt; [1] 2</span></span>
-<span><span class="fu">decimal</span><span class="fu">::</span><span class="fu"><a href="../reference/decimal.html">decimal</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/vector.html" class="external-link">as.vector</a></span><span class="op">(</span><span class="va">cs</span><span class="op">$</span><span class="fu">cast</span><span class="op">(</span><span class="fu">arrow</span><span class="fu">::</span><span class="fu"><a href="https://arrow.apache.org/docs/r/reference/data-type.html" class="external-link">string</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="fu"><a href="../reference/as_decimal.html">as_decimal</a></span><span class="op">(</span><span class="va">cs</span><span class="op">)</span></span>
 <span><span class="co">#&gt; &lt;decimal[3]&gt;</span></span>
 <span><span class="co">#&gt; [1] 1.25 2.50 3.75</span></span></code></pre></div>
 </div>
@@ -189,117 +190,96 @@ character vector, so no per-chunk bookkeeping is needed:</p>
 <div class="section level2">
 <h2 id="from-decimal-to-arrow">From decimal to Arrow<a class="anchor" aria-label="anchor" href="#from-decimal-to-arrow"></a>
 </h2>
-<p>Going the other way, write the vector out with
-<code><a href="https://rdrr.io/r/base/character.html" class="external-link">as.character()</a></code> and let Arrow parse the strings into the
-decimal type you want:</p>
+<p>A <code>decimal</code> vector converts to an Arrow decimal array on
+its own, so it becomes a decimal field wherever arrow infers types —
+<code><a href="https://arrow.apache.org/docs/r/reference/table.html" class="external-link">arrow::arrow_table()</a></code>, <code><a href="https://arrow.apache.org/docs/r/reference/write_parquet.html" class="external-link">arrow::write_parquet()</a></code>,
+<code><a href="https://arrow.apache.org/docs/r/reference/write_dataset.html" class="external-link">arrow::write_dataset()</a></code>:</p>
 <div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">x</span> <span class="op">&lt;-</span> <span class="fu">decimal</span><span class="fu">::</span><span class="fu"><a href="../reference/decimal.html">decimal</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"1.25"</span>, <span class="st">"2.50"</span>, <span class="st">"-3.75"</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="fu">arrow</span><span class="fu">::</span><span class="va"><a href="https://arrow.apache.org/docs/r/reference/array-class.html" class="external-link">Array</a></span><span class="op">$</span><span class="fu">create</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/character.html" class="external-link">as.character</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span><span class="op">)</span><span class="op">$</span><span class="fu">cast</span><span class="op">(</span><span class="fu">arrow</span><span class="fu">::</span><span class="fu"><a href="https://arrow.apache.org/docs/r/reference/data-type.html" class="external-link">decimal128</a></span><span class="op">(</span><span class="fl">12</span>, <span class="fl">2</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="fu">arrow</span><span class="fu">::</span><span class="fu"><a href="https://arrow.apache.org/docs/r/reference/as_arrow_array.html" class="external-link">as_arrow_array</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Array</span></span>
-<span><span class="co">#&gt; &lt;decimal128(12, 2)&gt;</span></span>
+<span><span class="co">#&gt; &lt;decimal128(3, 2)&gt;</span></span>
 <span><span class="co">#&gt; [</span></span>
 <span><span class="co">#&gt;   1.25,</span></span>
 <span><span class="co">#&gt;   2.50,</span></span>
 <span><span class="co">#&gt;   -3.75</span></span>
 <span><span class="co">#&gt; ]</span></span></code></pre></div>
-<p>The scale to ask for is the vector’s own,
-<code>attr(x, "scale")</code>. Precision is the decision you have to
-make: it’s the total number of digits, integer part included, and Arrow
-refuses a cast that wouldn’t fit rather than rounding silently:</p>
+<p>The scale is the vector’s own. The precision is inferred from the
+values present: the widest one here needs three digits, one before the
+point and two after.</p>
+<p>A tight precision derived from today’s data may not fit tomorrow’s,
+so for a column you’ll append to, pin a wider type:</p>
 <div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu">arrow</span><span class="fu">::</span><span class="va"><a href="https://arrow.apache.org/docs/r/reference/array-class.html" class="external-link">Array</a></span><span class="op">$</span><span class="fu">create</span><span class="op">(</span><span class="st">"12345.67"</span><span class="op">)</span><span class="op">$</span><span class="fu">cast</span><span class="op">(</span><span class="fu">arrow</span><span class="fu">::</span><span class="fu"><a href="https://arrow.apache.org/docs/r/reference/data-type.html" class="external-link">decimal128</a></span><span class="op">(</span><span class="fl">4</span>, <span class="fl">2</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt; <span style="color: #BBBB00; font-weight: bold;">Error</span><span style="font-weight: bold;">:</span></span></span>
-<span><span class="co">#&gt; <span style="color: #BBBB00;">!</span> Invalid: Decimal value does not fit in precision 4</span></span></code></pre></div>
-<p>Counting the digits actually present gives you the tightest type that
-works:</p>
+<code class="sourceCode R"><span><span class="fu">arrow</span><span class="fu">::</span><span class="fu"><a href="https://arrow.apache.org/docs/r/reference/as_arrow_array.html" class="external-link">as_arrow_array</a></span><span class="op">(</span><span class="va">x</span>, type <span class="op">=</span> <span class="fu">arrow</span><span class="fu">::</span><span class="fu"><a href="https://arrow.apache.org/docs/r/reference/data-type.html" class="external-link">decimal128</a></span><span class="op">(</span><span class="fl">20</span>, <span class="fl">2</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Array</span></span>
+<span><span class="co">#&gt; &lt;decimal128(20, 2)&gt;</span></span>
+<span><span class="co">#&gt; [</span></span>
+<span><span class="co">#&gt;   1.25,</span></span>
+<span><span class="co">#&gt;   2.50,</span></span>
+<span><span class="co">#&gt;   -3.75</span></span>
+<span><span class="co">#&gt; ]</span></span></code></pre></div>
+<p>Arrow refuses a cast that wouldn’t fit rather than rounding
+silently:</p>
 <div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">decimal_precision</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">x</span><span class="op">)</span> <span class="op">{</span></span>
-<span>  <span class="va">s</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/character.html" class="external-link">as.character</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span></span>
-<span>  <span class="va">s</span> <span class="op">&lt;-</span> <span class="va">s</span><span class="op">[</span><span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/NA.html" class="external-link">is.na</a></span><span class="op">(</span><span class="va">s</span><span class="op">)</span><span class="op">]</span></span>
-<span>  <span class="kw">if</span> <span class="op">(</span><span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">s</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span>
-<span>    <span class="kw"><a href="https://rdrr.io/r/base/function.html" class="external-link">return</a></span><span class="op">(</span><span class="fl">1L</span><span class="op">)</span></span>
-<span>  <span class="op">}</span></span>
-<span>  <span class="va">s</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/grep.html" class="external-link">sub</a></span><span class="op">(</span><span class="st">"^-"</span>, <span class="st">""</span>, <span class="va">s</span><span class="op">)</span></span>
-<span>  <span class="va">s</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/grep.html" class="external-link">gsub</a></span><span class="op">(</span><span class="st">"[.]"</span>, <span class="st">""</span>, <span class="va">s</span><span class="op">)</span></span>
-<span>  <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/nchar.html" class="external-link">nchar</a></span><span class="op">(</span><span class="va">s</span><span class="op">)</span>, <span class="fl">1L</span><span class="op">)</span></span>
-<span><span class="op">}</span></span>
-<span></span>
-<span><span class="va">y</span> <span class="op">&lt;-</span> <span class="fu">decimal</span><span class="fu">::</span><span class="fu"><a href="../reference/decimal.html">decimal</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"1.25"</span>, <span class="st">"-12345.50"</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="fu">decimal_precision</span><span class="op">(</span><span class="va">y</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 7</span></span></code></pre></div>
-<p>A fixed, generous precision is often the better choice for a column
-you’ll append to later — a tight one derived from today’s data may not
-fit tomorrow’s.</p>
-</div>
-<div class="section level2">
-<h2 id="a-reusable-pair">A reusable pair<a class="anchor" aria-label="anchor" href="#a-reusable-pair"></a>
-</h2>
-<p>Putting both directions together:</p>
-<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">from_arrow_decimal</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">x</span><span class="op">)</span> <span class="op">{</span></span>
-<span>  <span class="fu">decimal</span><span class="fu">::</span><span class="fu"><a href="../reference/decimal.html">decimal</a></span><span class="op">(</span></span>
-<span>    <span class="fu"><a href="https://rdrr.io/r/base/vector.html" class="external-link">as.vector</a></span><span class="op">(</span><span class="va">x</span><span class="op">$</span><span class="fu">cast</span><span class="op">(</span><span class="fu">arrow</span><span class="fu">::</span><span class="fu"><a href="https://arrow.apache.org/docs/r/reference/data-type.html" class="external-link">string</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span><span class="op">)</span>,</span>
-<span>    scale <span class="op">=</span> <span class="va">x</span><span class="op">$</span><span class="va">type</span><span class="op">$</span><span class="fu">scale</span><span class="op">(</span><span class="op">)</span></span>
-<span>  <span class="op">)</span></span>
-<span><span class="op">}</span></span>
-<span></span>
-<span><span class="va">to_arrow_decimal</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">x</span>, <span class="va">precision</span> <span class="op">=</span> <span class="fu">decimal_precision</span><span class="op">(</span><span class="va">x</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span>
-<span>  <span class="fu">arrow</span><span class="fu">::</span><span class="va"><a href="https://arrow.apache.org/docs/r/reference/array-class.html" class="external-link">Array</a></span><span class="op">$</span><span class="fu">create</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/character.html" class="external-link">as.character</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span><span class="op">)</span><span class="op">$</span><span class="fu">cast</span><span class="op">(</span></span>
-<span>    <span class="fu">arrow</span><span class="fu">::</span><span class="fu"><a href="https://arrow.apache.org/docs/r/reference/data-type.html" class="external-link">decimal128</a></span><span class="op">(</span><span class="va">precision</span>, <span class="fu"><a href="https://rdrr.io/r/base/attr.html" class="external-link">attr</a></span><span class="op">(</span><span class="va">x</span>, <span class="st">"scale"</span><span class="op">)</span><span class="op">)</span></span>
-<span>  <span class="op">)</span></span>
-<span><span class="op">}</span></span></code></pre></div>
-<p>They round-trip, missing values and all:</p>
-<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">z</span> <span class="op">&lt;-</span> <span class="fu">decimal</span><span class="fu">::</span><span class="fu"><a href="../reference/decimal.html">decimal</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"0.01"</span>, <span class="st">"999.99"</span>, <span class="cn">NA</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/identical.html" class="external-link">identical</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/character.html" class="external-link">as.character</a></span><span class="op">(</span><span class="fu">from_arrow_decimal</span><span class="op">(</span><span class="fu">to_arrow_decimal</span><span class="op">(</span><span class="va">z</span><span class="op">)</span><span class="op">)</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/base/character.html" class="external-link">as.character</a></span><span class="op">(</span><span class="va">z</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] TRUE</span></span></code></pre></div>
+<code class="sourceCode R"><span><span class="fu">arrow</span><span class="fu">::</span><span class="fu"><a href="https://arrow.apache.org/docs/r/reference/as_arrow_array.html" class="external-link">as_arrow_array</a></span><span class="op">(</span><span class="va">x</span>, type <span class="op">=</span> <span class="fu">arrow</span><span class="fu">::</span><span class="fu"><a href="https://arrow.apache.org/docs/r/reference/data-type.html" class="external-link">decimal128</a></span><span class="op">(</span><span class="fl">2</span>, <span class="fl">2</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt; <span style="color: #BBBB00; font-weight: bold;">Error</span><span style="font-weight: bold;">:</span></span></span>
+<span><span class="co">#&gt; <span style="color: #BBBB00;">!</span> Invalid: Decimal value does not fit in precision 2</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="whole-tables-and-parquet-files">Whole tables and Parquet files<a class="anchor" aria-label="anchor" href="#whole-tables-and-parquet-files"></a>
 </h2>
-<p>The same rule governs tables: <code><a href="https://rdrr.io/r/base/as.data.frame.html" class="external-link">as.data.frame()</a></code> on an
-Arrow table converts decimal columns to <code>double</code>, so pull the
-decimal columns across yourself.</p>
-<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
+<p>A data frame with a decimal column becomes a table with a decimal
+field:</p>
+<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">tab</span> <span class="op">&lt;-</span> <span class="fu">arrow</span><span class="fu">::</span><span class="fu"><a href="https://arrow.apache.org/docs/r/reference/table.html" class="external-link">arrow_table</a></span><span class="op">(</span></span>
-<span>  id <span class="op">=</span> <span class="fu">arrow</span><span class="fu">::</span><span class="va"><a href="https://arrow.apache.org/docs/r/reference/array-class.html" class="external-link">Array</a></span><span class="op">$</span><span class="fu">create</span><span class="op">(</span><span class="fl">1</span><span class="op">:</span><span class="fl">3</span><span class="op">)</span>,</span>
-<span>  amount <span class="op">=</span> <span class="fu">arrow</span><span class="fu">::</span><span class="va"><a href="https://arrow.apache.org/docs/r/reference/array-class.html" class="external-link">Array</a></span><span class="op">$</span><span class="fu">create</span><span class="op">(</span></span>
-<span>    <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"100.05"</span>, <span class="st">"0.01"</span>, <span class="st">"12.30"</span><span class="op">)</span></span>
-<span>  <span class="op">)</span><span class="op">$</span><span class="fu">cast</span><span class="op">(</span><span class="fu">arrow</span><span class="fu">::</span><span class="fu"><a href="https://arrow.apache.org/docs/r/reference/data-type.html" class="external-link">decimal128</a></span><span class="op">(</span><span class="fl">25</span>, <span class="fl">2</span><span class="op">)</span><span class="op">)</span></span>
+<span>  id <span class="op">=</span> <span class="fl">1</span><span class="op">:</span><span class="fl">3</span>,</span>
+<span>  amount <span class="op">=</span> <span class="fu">decimal</span><span class="fu">::</span><span class="fu"><a href="../reference/decimal.html">decimal</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"100.05"</span>, <span class="st">"0.01"</span>, <span class="st">"12.30"</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">out</span> <span class="op">&lt;-</span> <span class="fu">tibble</span><span class="fu">::</span><span class="fu"><a href="https://tibble.tidyverse.org/reference/tibble.html" class="external-link">tibble</a></span><span class="op">(</span></span>
-<span>  id <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/vector.html" class="external-link">as.vector</a></span><span class="op">(</span><span class="va">tab</span><span class="op">$</span><span class="va">id</span><span class="op">)</span>,</span>
-<span>  amount <span class="op">=</span> <span class="fu">from_arrow_decimal</span><span class="op">(</span><span class="va">tab</span><span class="op">$</span><span class="va">amount</span><span class="op">)</span></span>
-<span><span class="op">)</span></span>
-<span><span class="va">out</span></span>
+<span><span class="va">tab</span><span class="op">$</span><span class="va">schema</span><span class="op">$</span><span class="fu">GetFieldByName</span><span class="op">(</span><span class="st">"amount"</span><span class="op">)</span><span class="op">$</span><span class="va">type</span><span class="op">$</span><span class="fu">ToString</span><span class="op">(</span><span class="op">)</span></span>
+<span><span class="co">#&gt; [1] "decimal128(5, 2)"</span></span></code></pre></div>
+<p>Going back, <code><a href="https://rdrr.io/r/base/as.data.frame.html" class="external-link">as.data.frame()</a></code> is the wrong tool: arrow
+converts a decimal field to <code>double</code>. Use
+<code><a href="../reference/arrow_as_data_frame.html">arrow_as_data_frame()</a></code>, which reads the decimal fields as
+<code>decimal</code> vectors and leaves every other column to arrow:</p>
+<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu">tibble</span><span class="fu">::</span><span class="fu"><a href="https://tibble.tidyverse.org/reference/as_tibble.html" class="external-link">as_tibble</a></span><span class="op">(</span><span class="fu"><a href="../reference/arrow_as_data_frame.html">arrow_as_data_frame</a></span><span class="op">(</span><span class="va">tab</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt; <span style="color: #949494;"># A tibble: 3 × 2</span></span></span>
 <span><span class="co">#&gt;      id amount</span></span>
 <span><span class="co">#&gt;   <span style="color: #949494; font-style: italic;">&lt;int&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dec&gt;</span></span></span>
 <span><span class="co">#&gt; <span style="color: #BCBCBC;">1</span>     1 100.05</span></span>
 <span><span class="co">#&gt; <span style="color: #BCBCBC;">2</span>     2   0.01</span></span>
 <span><span class="co">#&gt; <span style="color: #BCBCBC;">3</span>     3  12.30</span></span></code></pre></div>
-<p>A base <code>data.frame</code> works too; a tibble is used here
-because pillar prints the column’s type, which makes it easy to confirm
-the decimal survived the crossing.</p>
+<p>A tibble is used here because pillar prints the column’s type, which
+makes it easy to confirm the decimal survived the crossing.</p>
 <p>Parquet preserves the Arrow type, so a file written with a decimal
-column reads back as one and crosses over the same way:</p>
-<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
+column reads back as one:</p>
+<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">path</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempfile</a></span><span class="op">(</span>fileext <span class="op">=</span> <span class="st">".parquet"</span><span class="op">)</span></span>
 <span><span class="fu">arrow</span><span class="fu">::</span><span class="fu"><a href="https://arrow.apache.org/docs/r/reference/write_parquet.html" class="external-link">write_parquet</a></span><span class="op">(</span><span class="va">tab</span>, <span class="va">path</span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">t2</span> <span class="op">&lt;-</span> <span class="fu">arrow</span><span class="fu">::</span><span class="fu"><a href="https://arrow.apache.org/docs/r/reference/read_parquet.html" class="external-link">read_parquet</a></span><span class="op">(</span><span class="va">path</span>, as_data_frame <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
 <span><span class="va">t2</span><span class="op">$</span><span class="va">schema</span><span class="op">$</span><span class="fu">GetFieldByName</span><span class="op">(</span><span class="st">"amount"</span><span class="op">)</span><span class="op">$</span><span class="va">type</span><span class="op">$</span><span class="fu">ToString</span><span class="op">(</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] "decimal128(25, 2)"</span></span>
-<span><span class="fu">from_arrow_decimal</span><span class="op">(</span><span class="va">t2</span><span class="op">$</span><span class="va">amount</span><span class="op">)</span></span>
+<span><span class="co">#&gt; [1] "decimal128(5, 2)"</span></span>
+<span><span class="fu"><a href="../reference/as_decimal.html">as_decimal</a></span><span class="op">(</span><span class="va">t2</span><span class="op">$</span><span class="va">amount</span><span class="op">)</span></span>
 <span><span class="co">#&gt; &lt;decimal[3]&gt;</span></span>
 <span><span class="co">#&gt; [1] 100.05 0.01   12.30</span></span></code></pre></div>
-<p>To find the decimal columns in a schema you didn’t write, check the
-field types:</p>
-<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">types</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">vapply</a></span><span class="op">(</span><span class="va">tab</span><span class="op">$</span><span class="va">schema</span><span class="op">$</span><span class="va">fields</span>, <span class="kw">function</span><span class="op">(</span><span class="va">f</span><span class="op">)</span> <span class="va">f</span><span class="op">$</span><span class="va">type</span><span class="op">$</span><span class="fu">ToString</span><span class="op">(</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/base/character.html" class="external-link">character</a></span><span class="op">(</span><span class="fl">1</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="va">tab</span><span class="op">)</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/grep.html" class="external-link">grepl</a></span><span class="op">(</span><span class="st">"^decimal"</span>, <span class="va">types</span><span class="op">)</span><span class="op">]</span></span>
-<span><span class="co">#&gt; [1] "amount"</span></span></code></pre></div>
+<div class="section level3">
+<h3 id="one-wrinkle-worth-knowing">One wrinkle worth knowing<a class="anchor" aria-label="anchor" href="#one-wrinkle-worth-knowing"></a>
+</h3>
+<p>Arrow records an R column’s attributes in the schema’s metadata and
+reapplies them on the way back. For a <code>decimal</code> column that
+means <code><a href="https://rdrr.io/r/base/as.data.frame.html" class="external-link">as.data.frame()</a></code> returns the double it would have
+returned anyway, now wearing the <code>decimal</code> class — an object
+that is not a valid decimal vector:</p>
+<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">broken</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/as.data.frame.html" class="external-link">as.data.frame</a></span><span class="op">(</span><span class="va">tab</span><span class="op">)</span><span class="op">$</span><span class="va">amount</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/typeof.html" class="external-link">typeof</a></span><span class="op">(</span><span class="va">broken</span><span class="op">)</span></span>
+<span><span class="co">#&gt; [1] "double"</span></span></code></pre></div>
+<p><code><a href="../reference/arrow_as_data_frame.html">arrow_as_data_frame()</a></code> rebuilds the column from the Arrow
+data and is unaffected. Dropping the metadata with
+<code>tab$replace_schema_metadata(NULL)</code> also avoids it, at the
+cost of every other attribute the table was carrying.</p>
+</div>
 </div>
 <div class="section level2">
 <h2 id="where-the-two-type-systems-differ">Where the two type systems differ<a class="anchor" aria-label="anchor" href="#where-the-two-type-systems-differ"></a>
@@ -308,34 +288,42 @@ field types:</p>
 them narrower than a <code>decimal</code> vector in two ways worth
 planning around.</p>
 <p><strong>Infinity and NaN have no Arrow decimal.</strong> A
-<code>decimal</code> vector holds them happily, but the cast fails
-rather than inventing a value:</p>
-<div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu">arrow</span><span class="fu">::</span><span class="va"><a href="https://arrow.apache.org/docs/r/reference/array-class.html" class="external-link">Array</a></span><span class="op">$</span><span class="fu">create</span><span class="op">(</span></span>
-<span>  <span class="fu"><a href="https://rdrr.io/r/base/character.html" class="external-link">as.character</a></span><span class="op">(</span><span class="fu">decimal</span><span class="fu">::</span><span class="fu"><a href="../reference/decimal.html">decimal</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"1.50"</span>, <span class="st">"NaN"</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="op">)</span><span class="op">$</span><span class="fu">cast</span><span class="op">(</span><span class="fu">arrow</span><span class="fu">::</span><span class="fu"><a href="https://arrow.apache.org/docs/r/reference/data-type.html" class="external-link">decimal128</a></span><span class="op">(</span><span class="fl">9</span>, <span class="fl">2</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt; <span style="color: #BBBB00; font-weight: bold;">Error</span><span style="font-weight: bold;">:</span></span></span>
-<span><span class="co">#&gt; <span style="color: #BBBB00;">!</span> Invalid: The string 'NaN' is not a valid decimal128 number</span></span></code></pre></div>
-<p>If a column can contain them, either keep it as a string in Arrow or
-map them to nulls before casting.</p>
+<code>decimal</code> vector holds them happily; the conversion reports
+which element it cannot represent rather than inventing a value:</p>
+<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu">arrow</span><span class="fu">::</span><span class="fu"><a href="https://arrow.apache.org/docs/r/reference/as_arrow_array.html" class="external-link">as_arrow_array</a></span><span class="op">(</span><span class="fu">decimal</span><span class="fu">::</span><span class="fu"><a href="../reference/decimal.html">decimal</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"1.50"</span>, <span class="st">"NaN"</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt; <span style="color: #BBBB00; font-weight: bold;">Error</span><span style="font-weight: bold;"> in `decimal_arrow_type()`:</span></span></span>
+<span><span class="co">#&gt; <span style="color: #BBBB00;">!</span> Arrow decimal types cannot represent infinities or NaNs; element 2 is `NaN`.</span></span></code></pre></div>
+<p>If a column can contain them, keep it as a string in Arrow, or map
+them to <code>NA</code> before converting.</p>
 <p><strong>Precision is capped.</strong>
 <code><a href="https://arrow.apache.org/docs/r/reference/data-type.html" class="external-link">arrow::decimal128()</a></code> allows at most 38 digits and
 <code><a href="https://arrow.apache.org/docs/r/reference/data-type.html" class="external-link">arrow::decimal256()</a></code> at most 76; a <code>decimal</code>
-vector has no such limit. Use <code><a href="https://arrow.apache.org/docs/r/reference/data-type.html" class="external-link">decimal256()</a></code> for very wide
-values:</p>
+vector has no such limit. The type is chosen for you —
+<code><a href="https://arrow.apache.org/docs/r/reference/data-type.html" class="external-link">decimal256()</a></code> when the values need it, an error when even
+that is too narrow:</p>
+<div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">big</span> <span class="op">&lt;-</span> <span class="fu">decimal</span><span class="fu">::</span><span class="fu"><a href="../reference/decimal.html">decimal</a></span><span class="op">(</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"12345678901234567890.12345678"</span>, <span class="st">"0.10000000000000000001"</span><span class="op">)</span>,</span>
+<span>  scale <span class="op">=</span> <span class="fl">20</span></span>
+<span><span class="op">)</span></span>
+<span><span class="fu">arrow</span><span class="fu">::</span><span class="fu"><a href="https://arrow.apache.org/docs/r/reference/infer_type.html" class="external-link">infer_type</a></span><span class="op">(</span><span class="va">big</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Decimal256Type</span></span>
+<span><span class="co">#&gt; decimal256(40, 20)</span></span></code></pre></div>
 <div class="sourceCode" id="cb19"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">big</span> <span class="op">&lt;-</span> <span class="fu">arrow</span><span class="fu">::</span><span class="va"><a href="https://arrow.apache.org/docs/r/reference/array-class.html" class="external-link">Array</a></span><span class="op">$</span><span class="fu">create</span><span class="op">(</span></span>
-<span>  <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"12345678901234567890.12345678"</span>, <span class="st">"0.10000000000000000001"</span><span class="op">)</span></span>
-<span><span class="op">)</span><span class="op">$</span><span class="fu">cast</span><span class="op">(</span><span class="fu">arrow</span><span class="fu">::</span><span class="fu"><a href="https://arrow.apache.org/docs/r/reference/data-type.html" class="external-link">decimal256</a></span><span class="op">(</span><span class="fl">50</span>, <span class="fl">20</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="fu">from_arrow_decimal</span><span class="op">(</span><span class="va">big</span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="fu">arrow</span><span class="fu">::</span><span class="fu"><a href="https://arrow.apache.org/docs/r/reference/infer_type.html" class="external-link">infer_type</a></span><span class="op">(</span><span class="fu">decimal</span><span class="fu">::</span><span class="fu"><a href="../reference/decimal.html">decimal</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/strrep.html" class="external-link">strrep</a></span><span class="op">(</span><span class="st">"9"</span>, <span class="fl">90</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt; <span style="color: #BBBB00; font-weight: bold;">Error</span><span style="font-weight: bold;"> in `decimal_arrow_type()`:</span></span></span>
+<span><span class="co">#&gt; <span style="color: #BBBB00;">!</span> `x` needs 90 digits of precision, more than the 76 digits `arrow::decimal256()` allows. Cast to `arrow::string()` instead, or reduce the scale.</span></span></code></pre></div>
+<p>Read back through <code>double</code>, those two wide values would
+have been <code>12345678901234567168</code> and
+<code>0.10000000000000000555</code> — the first wrong from its
+seventeenth digit, the second not 0.1 at all. Through Arrow’s decimal
+type, they’re exact:</p>
+<div class="sourceCode" id="cb20"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/as_decimal.html">as_decimal</a></span><span class="op">(</span><span class="fu">arrow</span><span class="fu">::</span><span class="fu"><a href="https://arrow.apache.org/docs/r/reference/as_arrow_array.html" class="external-link">as_arrow_array</a></span><span class="op">(</span><span class="va">big</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt; &lt;decimal[2]&gt;</span></span>
 <span><span class="co">#&gt; [1] 12345678901234567890.12345678000000000000</span></span>
 <span><span class="co">#&gt; [2] 0.10000000000000000001</span></span></code></pre></div>
-<p>Read back through <code>double</code>, those two values would have
-been <code>12345678901234567168</code> and
-<code>0.10000000000000000555</code> — the first wrong from its
-seventeenth digit, the second not 0.1 at all. Through the string,
-they’re exact.</p>
 </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside>

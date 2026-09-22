@@ -45,6 +45,12 @@
 - [`is_zero()`](https://pedrobtz.github.io/decimal/dev/reference/is_zero.md)
   : Identify decimal zeros
 
+## Arrow interoperability
+
+- [`arrow_as_data_frame()`](https://pedrobtz.github.io/decimal/dev/reference/arrow_as_data_frame.md)
+  : Convert an Arrow table to a data frame, keeping decimal columns
+  exact
+
 ## Contexts and signals
 
 - [`decimal_context()`](https://pedrobtz.github.io/decimal/dev/reference/decimal_context.md)
