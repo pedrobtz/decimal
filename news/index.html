@@ -18,7 +18,8 @@
       <ul class="navbar-nav me-auto"><li class="nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
-  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/contexts-and-signals.html">Contexts and Signals</a></li>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/arrow-decimal-types.html">Arrow Decimal Types</a></li>
+    <li><a class="dropdown-item" href="../articles/contexts-and-signals.html">Contexts and Signals</a></li>
     <li><a class="dropdown-item" href="../articles/decimal-values.html">Decimal Values</a></li>
   </ul></li>
 <li class="active nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
@@ -41,6 +42,8 @@
 <h2 class="pkg-version" data-toc-text="0.1.1" id="decimal-011">decimal 0.1.1<a class="anchor" aria-label="anchor" href="#decimal-011"></a></h2>
 <ul><li><p><code>DESCRIPTION</code> now declares <code>URL</code> and <code>BugReports</code>, so the CRAN page links to the source repository and the issue tracker.</p></li>
 <li><p>Building a <code>decimal</code> vector from character is substantially faster. The fractional-digit scan that <code><a href="../reference/decimal.html">decimal()</a></code> performs on every element moved from R to C, which for 100,000 values takes construction from 1.13s to 0.05s when <code>scale</code> is supplied (about 22x) and from 2.28s to 0.05s when it is inferred (about 45x). Inferring the scale now costs the same as supplying it. This matters most when loading decimal data from ‘Arrow’ or a database, where the values arrive as a character vector in one call.</p></li>
+<li><p>New vignette <code><a href="../articles/arrow-decimal-types.html">vignette("arrow-decimal-types")</a></code>, covering lossless conversion between <code>decimal</code> vectors and Arrow’s <code><a href="https://arrow.apache.org/docs/r/reference/data-type.html" class="external-link">decimal128()</a></code> / <code><a href="https://arrow.apache.org/docs/r/reference/data-type.html" class="external-link">decimal256()</a></code> types in both directions, including chunked arrays, Parquet columns, and the cases Arrow decimals cannot represent.</p></li>
+<li><p><code><a href="https://rdrr.io/r/base/format.html" class="external-link">format()</a></code> on a <code>decimal</code> vector no longer errors when it is given the <code>digits</code>, <code>na.encode</code> and <code>justify</code> arguments that <code><a href="https://rdrr.io/r/base/format.html" class="external-link">format.data.frame()</a></code> passes to every column. Decimal columns can now be printed inside a base <code>data.frame</code>. The arguments are tolerated rather than honoured, so an exact value is never silently rounded for display, and any other unused argument is still an error.</p></li>
 </ul></div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="0.1.0" id="decimal-010">decimal 0.1.0<a class="anchor" aria-label="anchor" href="#decimal-010"></a></h2><p class="text-muted">CRAN release: 2026-08-24</p>
