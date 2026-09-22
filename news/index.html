@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">decimal</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.1</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -24,6 +24,7 @@
 <li class="active nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json"></form></li>
+<li class="nav-item"><a class="external-link nav-link" href="https://github.com/pedrobtz/decimal/" aria-label="GitHub"><span class="fa fab fa-github fa-lg"></span></a></li>
       </ul></div>
 
 
@@ -33,14 +34,20 @@
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>Changelog</h1>
-
+      <small>Source: <a href="https://github.com/pedrobtz/decimal/blob/main/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="0.1.1" id="decimal-011">decimal 0.1.1<a class="anchor" aria-label="anchor" href="#decimal-011"></a></h2>
+<ul><li><p><code>DESCRIPTION</code> now declares <code>URL</code> and <code>BugReports</code>, so the CRAN page links to the source repository and the issue tracker.</p></li>
+<li><p>Building a <code>decimal</code> vector from character is substantially faster. The fractional-digit scan that <code><a href="../reference/decimal.html">decimal()</a></code> performs on every element moved from R to C, which for 100,000 values takes construction from 1.13s to 0.05s when <code>scale</code> is supplied (about 22x) and from 2.28s to 0.05s when it is inferred (about 45x). Inferring the scale now costs the same as supplying it. This matters most when loading decimal data from ‘Arrow’ or a database, where the values arrive as a character vector in one call.</p></li>
+</ul></div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="0.1.0" id="decimal-010">decimal 0.1.0<a class="anchor" aria-label="anchor" href="#decimal-010"></a></h2><p class="text-muted">CRAN release: 2026-08-24</p>
 <ul><li>Initial version</li>
 </ul></div>
-  </main></div>
+  </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
+    </nav></aside></div>
 
 
     <footer><div class="pkgdown-footer-left">
