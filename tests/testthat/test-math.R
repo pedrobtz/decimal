@@ -57,6 +57,26 @@ test_that("missingness and finiteness predicates follow decimal semantics", {
   expect_identical(is_signed(x), c(FALSE, FALSE, FALSE, FALSE, TRUE, FALSE))
 })
 
+test_that("predicates return real logicals, not mpdecimal flag bits", {
+  # Several mpd_is*() predicates return masked flags -- MPD_NAN is 4, MPD_SNAN
+  # is 8, MPD_INF is 2 -- so a predicate that forwards the return value builds
+  # an LGLSXP holding values R never produces. Such a vector still prints as
+  # TRUE and still compares equal under `==` (4 == TRUE is TRUE), which is why
+  # `expect_identical()` above cannot see the difference. Check the underlying
+  # integers, and the base functions that a malformed logical actually breaks.
+  x <- decimal(c("1", "NaN", "sNaN", "Infinity", "-0", NA_character_))
+
+  expect_identical(as.integer(is.na(x)), c(0L, 1L, 1L, 0L, 0L, 1L))
+  expect_identical(as.integer(is.nan(x)), c(0L, 1L, 1L, 0L, 0L, 0L))
+  expect_identical(as.integer(is.infinite(x)), c(0L, 0L, 0L, 1L, 0L, 0L))
+  expect_identical(as.integer(is_qnan(x)), c(0L, 1L, 0L, 0L, 0L, 0L))
+  expect_identical(as.integer(is_snan(x)), c(0L, 0L, 1L, 0L, 0L, 0L))
+
+  expect_identical(which(is.na(x)), c(2L, 3L, 6L))
+  expect_identical(sum(is.na(x)), 3L)
+  expect_true(identical(is.nan(x), c(FALSE, TRUE, TRUE, FALSE, FALSE, FALSE)))
+})
+
 test_that("classification helpers expose decimal-specific state", {
   old <- get_decimal_context()
   on.exit(set_decimal_context(old), add = TRUE)

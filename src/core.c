@@ -1828,26 +1828,31 @@ SEXP decimal_c_predicate_strings(SEXP x, SEXP predicate, SEXP precision,
     dec = decimal_qnew_checked();
     decimal_parse_exact_checked(dec, x, i);
 
+    /* Several mpd_is*() predicates return masked flag bits rather than 0 or 1
+       -- mpd_isnan() yields MPD_NAN (4) or MPD_SNAN (8), mpd_isinfinite()
+       yields MPD_INF (2). Storing those directly produces an LGLSXP holding
+       values R never expects, which prints as TRUE but breaks sum(), which(),
+       identical() and comparison against TRUE. Normalise every branch. */
     if (strcmp(name, "na") == 0) {
-      LOGICAL(out)[i] = mpd_isnan(dec);
+      LOGICAL(out)[i] = mpd_isnan(dec) ? TRUE : FALSE;
     } else if (strcmp(name, "nan") == 0) {
-      LOGICAL(out)[i] = mpd_isnan(dec);
+      LOGICAL(out)[i] = mpd_isnan(dec) ? TRUE : FALSE;
     } else if (strcmp(name, "finite") == 0) {
-      LOGICAL(out)[i] = !mpd_isspecial(dec);
+      LOGICAL(out)[i] = mpd_isspecial(dec) ? FALSE : TRUE;
     } else if (strcmp(name, "qnan") == 0) {
-      LOGICAL(out)[i] = mpd_isqnan(dec);
+      LOGICAL(out)[i] = mpd_isqnan(dec) ? TRUE : FALSE;
     } else if (strcmp(name, "snan") == 0) {
-      LOGICAL(out)[i] = mpd_issnan(dec);
+      LOGICAL(out)[i] = mpd_issnan(dec) ? TRUE : FALSE;
     } else if (strcmp(name, "infinite") == 0) {
-      LOGICAL(out)[i] = mpd_isinfinite(dec);
+      LOGICAL(out)[i] = mpd_isinfinite(dec) ? TRUE : FALSE;
     } else if (strcmp(name, "signed") == 0) {
-      LOGICAL(out)[i] = mpd_issigned(dec);
+      LOGICAL(out)[i] = mpd_issigned(dec) ? TRUE : FALSE;
     } else if (strcmp(name, "zero") == 0) {
-      LOGICAL(out)[i] = mpd_iszero(dec);
+      LOGICAL(out)[i] = mpd_iszero(dec) ? TRUE : FALSE;
     } else if (strcmp(name, "normal") == 0) {
-      LOGICAL(out)[i] = mpd_isnormal(dec, &ctx);
+      LOGICAL(out)[i] = mpd_isnormal(dec, &ctx) ? TRUE : FALSE;
     } else if (strcmp(name, "subnormal") == 0) {
-      LOGICAL(out)[i] = mpd_issubnormal(dec, &ctx);
+      LOGICAL(out)[i] = mpd_issubnormal(dec, &ctx) ? TRUE : FALSE;
     } else {
       mpd_del(dec);
       Rf_error("Unsupported decimal predicate");

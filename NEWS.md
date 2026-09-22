@@ -1,5 +1,12 @@
 # decimal 0.1.1
 
+- Fixed `is.na()`, `is.nan()`, `is.infinite()`, `is_qnan()` and `is_snan()`
+  returning malformed logical vectors. They forwarded mpdecimal's flag bits --
+  4 for `NaN`, 8 for `sNaN`, 2 for `Infinity` -- instead of `TRUE`. The results
+  printed correctly and compared equal with `==`, but `which()` found no
+  matching elements, `sum()` over-counted, and `identical()` was false against
+  the obvious expectation.
+
 - `DESCRIPTION` now declares `URL` and `BugReports`, so the CRAN page links to
   the source repository and the issue tracker.
 
