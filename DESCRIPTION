@@ -33,6 +33,7 @@ Imports:
     vctrs,
     withr
 Suggests:
+    arrow,
     covr,
     knitr,
     pillar,
