@@ -57,6 +57,26 @@ test_that("missingness and finiteness predicates follow decimal semantics", {
   expect_identical(is_signed(x), c(FALSE, FALSE, FALSE, FALSE, TRUE, FALSE))
 })
 
+test_that("predicates return real logicals, not mpdecimal flag bits", {
+  # Several mpd_is*() predicates return masked flags -- MPD_NAN is 4, MPD_SNAN
+  # is 8, MPD_INF is 2 -- so a predicate that forwards the return value builds
+  # an LGLSXP holding values R never produces. Such a vector still prints as
+  # TRUE and still compares equal under `==` (4 == TRUE is TRUE), which is why
+  # `expect_identical()` above cannot see the difference. Check the underlying
+  # integers, and the base functions that a malformed logical actually breaks.
+  x <- decimal(c("1", "NaN", "sNaN", "Infinity", "-0", NA_character_))
+
+  expect_identical(as.integer(is.na(x)), c(0L, 1L, 1L, 0L, 0L, 1L))
+  expect_identical(as.integer(is.nan(x)), c(0L, 1L, 1L, 0L, 0L, 0L))
+  expect_identical(as.integer(is.infinite(x)), c(0L, 0L, 0L, 1L, 0L, 0L))
+  expect_identical(as.integer(is_qnan(x)), c(0L, 1L, 0L, 0L, 0L, 0L))
+  expect_identical(as.integer(is_snan(x)), c(0L, 0L, 1L, 0L, 0L, 0L))
+
+  expect_identical(which(is.na(x)), c(2L, 3L, 6L))
+  expect_identical(sum(is.na(x)), 3L)
+  expect_true(identical(is.nan(x), c(FALSE, TRUE, TRUE, FALSE, FALSE, FALSE)))
+})
+
 test_that("classification helpers expose decimal-specific state", {
   old <- get_decimal_context()
   on.exit(set_decimal_context(old), add = TRUE)
@@ -198,4 +218,69 @@ test_that("ordering summaries return decimal infinities on empty input", {
     range(decimal(c(NA_character_, "1"))),
     c(NA_decimal_, NA_decimal_)
   )
+})
+
+test_that("summary() reports the same statistics as base R", {
+  expect_identical(
+    unname(as.character(summary(decimal(c("1", "2", "3", "4"))))),
+    c("1.00", "1.75", "2.50", "2.50", "3.25", "4.00")
+  )
+  expect_identical(
+    names(summary(decimal(c("1", "2", "3", "4")))),
+    c("Min.", "1st Qu.", "Median", "Mean", "3rd Qu.", "Max.")
+  )
+
+  # A median that lands on an element is exact, not interpolated.
+  expect_identical(
+    as.character(summary(decimal(c("1", "2", "3")))[["Median"]]),
+    "2.0"
+  )
+})
+
+test_that("summary() counts missing values instead of propagating them", {
+  out <- summary(decimal(c("1.5", NA, "2.5")))
+
+  expect_identical(names(out)[7], "NA's")
+  expect_identical(as.character(out[["NA's"]]), "1.000")
+  expect_identical(as.character(out[["Min."]]), "1.500")
+
+  # NaN is missing here for the same reason it is in base R: is.na() is true.
+  expect_identical(
+    as.character(summary(decimal(c("1", "NaN", "3")))[["NA's"]]),
+    "1.00"
+  )
+})
+
+test_that("summary() handles empty and all-missing input", {
+  empty <- summary(decimal(character(0)))
+  expect_identical(as.character(empty[["Min."]]), NA_character_)
+  expect_identical(as.character(empty[["Mean"]]), "NaN")
+
+  all_na <- summary(decimal(c(NA_character_, NA_character_)))
+  expect_identical(as.character(all_na[["NA's"]]), "2")
+})
+
+test_that("summary() keeps precision a double would lose", {
+  x <- decimal(c("0.10000000000000000001", "0.10000000000000000003"))
+  out <- summary(x)
+
+  # Interpolating the quartiles needs two more digits than the input carries,
+  # and the shared scale widens every entry to match, so compare values rather
+  # than their padded text.
+  expect_true(out[["Median"]] == decimal("0.10000000000000000002"))
+  expect_true(out[["1st Qu."]] == decimal("0.100000000000000000015"))
+  expect_identical(attr(out, "scale"), 22L)
+
+  # The same figures through double would collapse to a single value, which is
+  # the loss this package warns about.
+  expect_warning(doubles <- as.double(x), "Lossy conversion")
+  expect_identical(length(unique(doubles)), 1L)
+})
+
+test_that("summary() tolerates the arguments summary.data.frame passes", {
+  x <- decimal(c("1", "2", "3", "4"))
+
+  expect_identical(summary(x, digits = 2), summary(x))
+  expect_identical(summary(x, maxsum = 7L), summary(x))
+  expect_error(summary(x, bogus = TRUE), "`...` must be empty")
 })

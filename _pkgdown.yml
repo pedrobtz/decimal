@@ -24,6 +24,7 @@ reference:
       - normalize
       - fma
       - same_quantum
+      - summary.decimal
       - adjusted
       - number_class
   - title: Decimal predicates

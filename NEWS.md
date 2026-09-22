@@ -1,5 +1,18 @@
 # decimal 0.1.1
 
+- `summary()` now works on `decimal` vectors. It reports the same six
+  statistics as [summary.default()] plus an `NA's` count, computed in decimal
+  arithmetic and returned as a `decimal` vector, so figures that a double would
+  round are preserved. Quartiles use the type 7 definition, matching
+  `stats::quantile()`.
+
+- Fixed `is.na()`, `is.nan()`, `is.infinite()`, `is_qnan()` and `is_snan()`
+  returning malformed logical vectors. They forwarded mpdecimal's flag bits --
+  4 for `NaN`, 8 for `sNaN`, 2 for `Infinity` -- instead of `TRUE`. The results
+  printed correctly and compared equal with `==`, but `which()` found no
+  matching elements, `sum()` over-counted, and `identical()` was false against
+  the obvious expectation.
+
 - `DESCRIPTION` now declares `URL` and `BugReports`, so the CRAN page links to
   the source repository and the issue tracker.
 

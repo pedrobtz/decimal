@@ -929,6 +929,111 @@ Summary.decimal <- function(..., na.rm = FALSE) {
   )
 }
 
+# Type 7 quantiles, the default `stats::quantile()` method, on an already
+# sorted decimal vector. `h` stays exact in double: `probs` are quarters, which
+# are binary fractions, and `n - 1` is a whole number, so the interpolation
+# weight converts to decimal without loss. The interpolation itself runs in
+# decimal arithmetic under the active context.
+decimal_quantile_type7 <- function(sorted, probs) {
+  n <- length(sorted)
+
+  out <- lapply(probs, function(p) {
+    if (n == 1L) {
+      return(sorted)
+    }
+
+    h <- (n - 1L) * p + 1
+    lo <- floor(h)
+    weight <- h - lo
+
+    if (weight == 0) {
+      sorted[lo]
+    } else {
+      step <- sorted[lo + 1L] - sorted[lo]
+      sorted[lo] + decimal(format(weight, scientific = FALSE)) * step
+    }
+  })
+
+  do.call(vctrs::vec_c, out)
+}
+
+#' Summarise a decimal vector
+#'
+#' The six-number summary that [summary()] gives for a numeric vector, computed
+#' in exact decimal arithmetic and returned as a `decimal` vector rather than a
+#' vector of doubles.
+#'
+#' Missing values are removed before the statistics are computed and reported
+#' as an `NA's` entry, matching [summary.default()]. As in base R, `NaN` counts
+#' as missing here, because [is.na()] is true for it.
+#'
+#' The quartiles use the type 7 definition, the default of
+#' [stats::quantile()]. A quantile that falls between two elements is
+#' interpolated, and the mean divides by the number of elements, so both run
+#' under the active decimal context and may raise `inexact` and `rounded`
+#' signals like any other division. The minimum, the maximum, and any quantile
+#' that lands exactly on an element are always exact.
+#'
+#' Because a `decimal` vector carries one shared scale, every entry is padded to
+#' the widest one present -- including the `NA's` count, which is a count rather
+#' than a measured value. Interpolating a quartile can need more digits than the
+#' input carries, which widens that shared scale.
+#'
+#' Interpolating between `-Infinity` and `Infinity` is an invalid operation, and
+#' the default context traps it, so summarising a vector that spans both signed
+#' infinities raises an error rather than returning `NaN` quartiles. That is the
+#' same error `decimal("Infinity") - decimal("Infinity")` raises. Clear the trap
+#' with [with_decimal_context()] to get base R's `NaN` instead.
+#'
+#' @param object A `decimal` vector.
+#' @param ... These dots must be empty.
+#' @param maxsum,digits Accepted for compatibility with [summary.data.frame()],
+#'   which passes them to every column, and ignored. `digits` in particular is
+#'   not honoured: rounding an exact decimal for display is the surprise this
+#'   package exists to avoid.
+#' @return A named `decimal` vector holding `Min.`, `1st Qu.`, `Median`,
+#'   `Mean`, `3rd Qu.` and `Max.`, followed by `NA's` when the input contains
+#'   missing values.
+#' @examples
+#' summary(decimal(c("1.25", "2.50", "3.75", "10.00")))
+#'
+#' # Missing values are counted, not propagated.
+#' summary(decimal(c("1.5", NA, "2.5")))
+#' @export
+summary.decimal <- function(object, ..., maxsum = 100L, digits = NULL) {
+  rlang::check_dots_empty()
+
+  missing_count <- sum(is.na(object))
+  values <- object[!is.na(object)]
+
+  labels <- c("Min.", "1st Qu.", "Median", "Mean", "3rd Qu.", "Max.")
+
+  if (length(values) == 0L) {
+    # `summary(numeric(0))` reports NA for the quantiles and NaN for the mean.
+    out <- vctrs::vec_c(
+      NA_decimal_, NA_decimal_, NA_decimal_,
+      decimal("NaN"),
+      NA_decimal_, NA_decimal_
+    )
+  } else {
+    sorted <- sort(values)
+    quartiles <- decimal_quantile_type7(sorted, c(0, 0.25, 0.5, 0.75, 1))
+    out <- vctrs::vec_c(
+      quartiles[1L], quartiles[2L], quartiles[3L],
+      mean(values),
+      quartiles[4L], quartiles[5L]
+    )
+  }
+
+  if (missing_count > 0L) {
+    out <- vctrs::vec_c(out, decimal(as.character(missing_count)))
+    labels <- c(labels, "NA's")
+  }
+
+  names(out) <- labels
+  out
+}
+
 #' @export
 log.decimal <- function(x, base = exp(1)) {
   out <- decimal_unary_math(x, "log")
