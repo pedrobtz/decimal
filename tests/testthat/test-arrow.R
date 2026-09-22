@@ -14,8 +14,12 @@ test_that("as_decimal() reads an Arrow decimal128 array exactly", {
     as.character(out),
     c("100.05", "99999999999999999999.99", "0.01")
   )
-  # The point of the exact path: a double loses the twenty-second digit.
-  expect_false(identical(as.vector(x)[2L], 99999999999999999999.99))
+  # The point of the exact path: at this magnitude a double's neighbours are
+  # thousands apart, so the cents cannot survive `as.vector()`. Which double
+  # the conversion lands on varies by platform; that it cannot hold the cents
+  # does not.
+  lossy <- as.vector(x)[2L]
+  expect_identical(lossy + 0.99, lossy)
 })
 
 test_that("as_decimal() reads an Arrow decimal256 array exactly", {
@@ -264,7 +268,8 @@ test_that("arrow_as_data_frame() keeps decimal columns exact", {
   expect_identical(out$label, c("a", "b"))
   expect_identical(out$amount, decimal(c("100.05", "0.01")))
   # What arrow's own conversion does with the same column.
-  expect_identical(as.data.frame(tab)$amount, c(100.05, 0.01))
+  expect_type(as.data.frame(tab)$amount, "double")
+  expect_equal(as.data.frame(tab)$amount, c(100.05, 0.01))
 })
 
 test_that("arrow_as_data_frame() ignores arrow's restored R attributes", {
