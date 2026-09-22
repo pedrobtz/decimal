@@ -1,16 +1,31 @@
 on:
   workflow_dispatch:
 
+  # Gate the C, and only the C. These jobs take about seventeen minutes in
+  # parallel -- gctorture is essentially all of it -- which is worth paying on
+  # a change to src/ and worth paying on nothing else, so a vignette or a
+  # roxygen edit still gets the ordinary checks and nothing more.
+  #
+  # Dispatch-only was the previous arrangement, and it meant this ran when
+  # somebody remembered. Nobody did: the workflow was failing at startup from
+  # June until September without one run, and the leak it would have caught
+  # sat in the parse path for that whole time.
+  pull_request:
+    paths:
+      - "src/**"
+      - ".github/workflows/native-checks.yaml"
+
 name: native-checks
 
-# Required, not optional. The repository's default GITHUB_TOKEN permission is
-# `read`, which is narrower than the `read-all` these reusable workflows
-# declare, and a called workflow cannot be granted more than its caller holds.
-# Without this block every job is rejected before it starts: the run ends in
-# `startup_failure` after two seconds with no jobs and no annotation, which
-# looks like an outage rather than a configuration error. Every other workflow
-# here already declares permissions, which is why only this one was affected.
-permissions: read-all
+# These workflows only read. Declaring that here rather than inheriting it
+# keeps the grant visible at the call site, and keeps this caller working if
+# they ever ask for something wider again -- which is what broke it before:
+# they declared `read-all`, a called workflow cannot be granted more than its
+# caller holds, and the run died as `startup_failure` two seconds in with no
+# jobs and no annotation to explain it. r-actions v1.10.0 narrowed them to
+# `contents: read`, so this now matches what they use.
+permissions:
+  contents: read
 
 jobs:
   sanitizers:
