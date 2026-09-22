@@ -449,7 +449,14 @@ is_decimal <- function(x) {
 #' double input raises an error. Quantization uses the active
 #' [decimal_context()].
 #'
-#' @param x A decimal, character, integer, or double vector.
+#' An Arrow `Array` or `ChunkedArray` of type `decimal128()` or `decimal256()`
+#' converts exactly, taking its scale from the Arrow type rather than from the
+#' values, so a chunk holding only whole numbers keeps its declared fractional
+#' digits. Any other Arrow type converts to an R vector first and then follows
+#' the rules above. See `vignette("arrow-decimal-types")`.
+#'
+#' @param x A decimal, character, integer, or double vector, or an Arrow
+#'   `Array` or `ChunkedArray`.
 #' @param scale An integer scalar giving the number of fractional digits to
 #'   store, or `NULL` to use the global default or input-specific inference.
 #'

@@ -19,7 +19,10 @@ The package has three cooperating concepts:
 The current surface includes construction and conversion; arithmetic,
 comparison, Math, and Summary methods; context management; classification; and
 helpers such as `quantize()`, `normalize()`, `fma()`, `same_quantum()`,
-`adjusted()`, and `number_class()`. `_pkgdown.yml` is the authoritative public
+`adjusted()`, and `number_class()`. Optional Arrow interoperability rides on
+the same conversion contracts: `as_decimal()` methods for Arrow arrays,
+methods on `arrow::infer_type()` and `arrow::as_arrow_array()` registered only
+when arrow is present, and `arrow_as_data_frame()`. `_pkgdown.yml` is the authoritative public
 API grouping.
 
 ## Behavioral Invariants

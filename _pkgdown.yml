@@ -35,6 +35,9 @@ reference:
       - is_subnormal
       - is_signed
       - is_zero
+  - title: Arrow interoperability
+    contents:
+      - arrow_as_data_frame
   - title: Contexts and signals
     contents:
       - decimal_context

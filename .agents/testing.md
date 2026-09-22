@@ -11,6 +11,8 @@ the production concern:
 - `test-math.R` — Math/Summary methods and decimal-specific helpers.
 - `test-native-core.R` — exact native conversion and kernel behavior.
 - `test-mpdecimal-version.R` — startup and vendored-version checks.
+- `test-arrow.R` — Arrow conversion in both directions, guarded by
+  `skip_if_not_installed("arrow")`.
 
 Name new files `test-<module>.R` and use focused
 `test_that("<observable behavior>", ...)` blocks. Put regressions beside the
