@@ -25,10 +25,10 @@ don't share is a memory layout: Arrow packs a decimal into a fixed-width
 integer, while a `decimal` vector stores text and a shared scale
 (`vignette("decimal-values")`).
 
-The bridge between them is the **decimal string**. Both sides can write one and
-read one exactly, which makes it a lossless interchange format. This vignette
-shows how to cross in both directions, and where the two type systems don't
-quite line up.
+The bridge between them is the **decimal string**. Both sides write and read
+one exactly, which makes it a lossless interchange format, and the package uses
+it in both directions for you. This vignette shows the crossings and where the
+two type systems don't quite line up.
 
 ```{r setup}
 library(decimal)
@@ -72,51 +72,47 @@ The first value picked up a tail of garbage, and the second lost its cents
 entirely: `99999999999999999999.99` came back as `1e+20`. Twenty-two
 significant digits don't fit in a double, which carries about sixteen.
 
-Cast to `arrow::string()` first, then build the decimal vector:
+`as_decimal()` takes the array directly and keeps every digit:
 
 ```{r}
-decimal::decimal(as.vector(a$cast(arrow::string())))
+as_decimal(a)
 ```
 
-Every digit survives. The cast to string happens inside Arrow, in exact
-arithmetic, and `decimal::decimal()` parses the text exactly — so `double`
-never enters the picture.
+No `double` is involved. Arrow casts the column to text in its own exact
+arithmetic, and that text is already the canonical form a `decimal` vector
+stores, so the values move across without being re-parsed. That makes the exact
+path about as fast as the lossy one.
 
 ### Scale comes along for free
 
-An Arrow decimal type carries its own scale, and the string cast pads every
-value to it. That means the resulting vector's scale already matches the source
-column, with nothing for you to specify:
+An Arrow decimal type carries its own scale, and `as_decimal()` reads it off
+the type rather than guessing from the text. That matters when a column happens
+to hold only whole numbers — the declared cents survive anyway:
 
 ```{r}
-a$type$scale()
-attr(decimal::decimal(as.vector(a$cast(arrow::string()))), "scale")
+whole <- arrow::Array$create(c("1", "2"))$cast(arrow::decimal128(9, 2))
+as_decimal(whole)
+attr(as_decimal(whole), "scale")
 ```
 
-If you'd rather be explicit — or you want to pin the scale even when a chunk
-happens to contain only whole numbers — read it off the type and pass it along:
+Passing `scale` overrides the type, rescaling as usual — exactly when the scale
+grows, and by quantizing under the active [decimal_context()] when it shrinks:
 
 ```{r}
-decimal::decimal(
-  as.vector(a$cast(arrow::string())),
-  scale = a$type$scale()
-)
+as_decimal(a, scale = 4)
 ```
 
 ### Nulls become `NA`
 
-Arrow's nulls survive the string cast as `NA`, and land as missing decimals:
-
 ```{r}
-b <- arrow::Array$create(c("1.50", NA, "2.25"))$cast(arrow::decimal128(9, 2))
-decimal::decimal(as.vector(b$cast(arrow::string())))
+as_decimal(arrow::Array$create(c("1.50", NA, "2.25"))$cast(arrow::decimal128(9, 2)))
 ```
 
 ### Chunked arrays work the same way
 
 A column read from Parquet or a dataset is usually a `ChunkedArray` rather than
-an `Array`. It casts the same way, and `as.vector()` flattens the chunks into
-one character vector, so no per-chunk bookkeeping is needed:
+an `Array`. It has its own `as_decimal()` method, so no per-chunk bookkeeping is
+needed:
 
 ```{r}
 cs <- arrow::ChunkedArray$create(
@@ -124,100 +120,62 @@ cs <- arrow::ChunkedArray$create(
   arrow::Array$create("3.75")$cast(arrow::decimal128(9, 2))
 )
 cs$num_chunks
-decimal::decimal(as.vector(cs$cast(arrow::string())))
+as_decimal(cs)
 ```
 
 ## From decimal to Arrow
 
-Going the other way, write the vector out with `as.character()` and let Arrow
-parse the strings into the decimal type you want:
+A `decimal` vector converts to an Arrow decimal array on its own, so it becomes
+a decimal field wherever arrow infers types — `arrow::arrow_table()`,
+`arrow::write_parquet()`, `arrow::write_dataset()`:
 
 ```{r}
 x <- decimal::decimal(c("1.25", "2.50", "-3.75"))
-arrow::Array$create(as.character(x))$cast(arrow::decimal128(12, 2))
+arrow::as_arrow_array(x)
 ```
 
-The scale to ask for is the vector's own, `attr(x, "scale")`. Precision is the
-decision you have to make: it's the total number of digits, integer part
-included, and Arrow refuses a cast that wouldn't fit rather than rounding
-silently:
+The scale is the vector's own. The precision is inferred from the values
+present: the widest one here needs three digits, one before the point and two
+after.
+
+A tight precision derived from today's data may not fit tomorrow's, so for a
+column you'll append to, pin a wider type:
+
+```{r}
+arrow::as_arrow_array(x, type = arrow::decimal128(20, 2))
+```
+
+Arrow refuses a cast that wouldn't fit rather than rounding silently:
 
 ```{r, error = TRUE}
-arrow::Array$create("12345.67")$cast(arrow::decimal128(4, 2))
-```
-
-Counting the digits actually present gives you the tightest type that works:
-
-```{r}
-decimal_precision <- function(x) {
-  s <- as.character(x)
-  s <- s[!is.na(s)]
-  if (!length(s)) {
-    return(1L)
-  }
-  s <- sub("^-", "", s)
-  s <- gsub("[.]", "", s)
-  max(nchar(s), 1L)
-}
-
-y <- decimal::decimal(c("1.25", "-12345.50"))
-decimal_precision(y)
-```
-
-A fixed, generous precision is often the better choice for a column you'll
-append to later — a tight one derived from today's data may not fit tomorrow's.
-
-## A reusable pair
-
-Putting both directions together:
-
-```{r}
-from_arrow_decimal <- function(x) {
-  decimal::decimal(
-    as.vector(x$cast(arrow::string())),
-    scale = x$type$scale()
-  )
-}
-
-to_arrow_decimal <- function(x, precision = decimal_precision(x)) {
-  arrow::Array$create(as.character(x))$cast(
-    arrow::decimal128(precision, attr(x, "scale"))
-  )
-}
-```
-
-They round-trip, missing values and all:
-
-```{r}
-z <- decimal::decimal(c("0.01", "999.99", NA))
-identical(as.character(from_arrow_decimal(to_arrow_decimal(z))), as.character(z))
+arrow::as_arrow_array(x, type = arrow::decimal128(2, 2))
 ```
 
 ## Whole tables and Parquet files
 
-The same rule governs tables: `as.data.frame()` on an Arrow table converts
-decimal columns to `double`, so pull the decimal columns across yourself.
+A data frame with a decimal column becomes a table with a decimal field:
 
 ```{r}
 tab <- arrow::arrow_table(
-  id = arrow::Array$create(1:3),
-  amount = arrow::Array$create(
-    c("100.05", "0.01", "12.30")
-  )$cast(arrow::decimal128(25, 2))
+  id = 1:3,
+  amount = decimal::decimal(c("100.05", "0.01", "12.30"))
 )
-
-out <- tibble::tibble(
-  id = as.vector(tab$id),
-  amount = from_arrow_decimal(tab$amount)
-)
-out
+tab$schema$GetFieldByName("amount")$type$ToString()
 ```
 
-A base `data.frame` works too; a tibble is used here because pillar prints the
-column's type, which makes it easy to confirm the decimal survived the crossing.
+Going back, `as.data.frame()` is the wrong tool: arrow converts a decimal field
+to `double`. Use `arrow_as_data_frame()`, which reads the decimal fields as
+`decimal` vectors and leaves every other column to arrow:
+
+```{r}
+tibble::as_tibble(arrow_as_data_frame(tab))
+```
+
+A tibble is used here because pillar prints the column's type, which makes it
+easy to confirm the decimal survived the crossing.
 
 Parquet preserves the Arrow type, so a file written with a decimal column reads
-back as one and crosses over the same way:
+back as one:
 
 ```{r}
 path <- tempfile(fileext = ".parquet")
@@ -225,20 +183,29 @@ arrow::write_parquet(tab, path)
 
 t2 <- arrow::read_parquet(path, as_data_frame = FALSE)
 t2$schema$GetFieldByName("amount")$type$ToString()
-from_arrow_decimal(t2$amount)
+as_decimal(t2$amount)
 ```
 
 ```{r, include = FALSE}
 unlink(path)
 ```
 
-To find the decimal columns in a schema you didn't write, check the field
-types:
+### One wrinkle worth knowing
+
+Arrow records an R column's attributes in the schema's metadata and reapplies
+them on the way back. For a `decimal` column that means `as.data.frame()`
+returns the double it would have returned anyway, now wearing the `decimal`
+class — an object that is not a valid decimal vector:
 
 ```{r}
-types <- vapply(tab$schema$fields, function(f) f$type$ToString(), character(1))
-names(tab)[grepl("^decimal", types)]
+broken <- as.data.frame(tab)$amount
+typeof(broken)
 ```
+
+`arrow_as_data_frame()` rebuilds the column from the Arrow data and is
+unaffected. Dropping the metadata with
+`tab$replace_schema_metadata(NULL)` also avoids it, at the cost of every other
+attribute the table was carrying.
 
 ## Where the two type systems differ
 
@@ -246,29 +213,38 @@ Arrow's decimals are fixed-width integers with a scale, which makes them
 narrower than a `decimal` vector in two ways worth planning around.
 
 **Infinity and NaN have no Arrow decimal.** A `decimal` vector holds them
-happily, but the cast fails rather than inventing a value:
+happily; the conversion reports which element it cannot represent rather than
+inventing a value:
 
 ```{r, error = TRUE}
-arrow::Array$create(
-  as.character(decimal::decimal(c("1.50", "NaN")))
-)$cast(arrow::decimal128(9, 2))
+arrow::as_arrow_array(decimal::decimal(c("1.50", "NaN")))
 ```
 
-If a column can contain them, either keep it as a string in Arrow or map them
-to nulls before casting.
+If a column can contain them, keep it as a string in Arrow, or map them to `NA`
+before converting.
 
 **Precision is capped.** `arrow::decimal128()` allows at most 38 digits and
-`arrow::decimal256()` at most 76; a `decimal` vector has no such limit. Use
-`decimal256()` for very wide values:
+`arrow::decimal256()` at most 76; a `decimal` vector has no such limit. The
+type is chosen for you — `decimal256()` when the values need it, an error when
+even that is too narrow:
 
 ```{r}
-big <- arrow::Array$create(
-  c("12345678901234567890.12345678", "0.10000000000000000001")
-)$cast(arrow::decimal256(50, 20))
-from_arrow_decimal(big)
+big <- decimal::decimal(
+  c("12345678901234567890.12345678", "0.10000000000000000001"),
+  scale = 20
+)
+arrow::infer_type(big)
 ```
 
-Read back through `double`, those two values would have been
+```{r, error = TRUE}
+arrow::infer_type(decimal::decimal(strrep("9", 90)))
+```
+
+Read back through `double`, those two wide values would have been
 `12345678901234567168` and `0.10000000000000000555` — the first wrong from its
-seventeenth digit, the second not 0.1 at all. Through the string, they're
-exact.
+seventeenth digit, the second not 0.1 at all. Through Arrow's decimal type,
+they're exact:
+
+```{r}
+as_decimal(arrow::as_arrow_array(big))
+```

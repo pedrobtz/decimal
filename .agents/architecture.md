@@ -30,6 +30,7 @@ flowchart LR
 | --- | --- | --- |
 | Values and methods | `R/decimal.R` | `decimal()`, `new_decimal()`, `vec_arith.decimal()`, `vec_math.decimal()` |
 | Context state | `R/context.R` | `decimal_context()`, `get_decimal_context()`, `decimal_update_flags()` |
+| Arrow interoperability | `R/arrow.R` | `as_decimal.Array()`, `infer_type.decimal()`, `arrow_as_data_frame()` |
 | Native adapter | `R/native-core.R` | `decimal_context_call()`, `decimal_native_result()` |
 | Native kernels | `src/core.c` | `decimal_c_*_strings()`, parsing and result helpers |
 | Routine registration | `src/init.c` | `CallEntries`, `R_init_decimal()` |

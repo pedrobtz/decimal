@@ -26,6 +26,7 @@ smaller set that is committed to 0.2.0.
 | `scaleb` | `scaleb()` | Add integer power-of-ten exponent shifts |
 | `compare_total`, `compare_total_mag` | `compare_total()`, `compare_total_mag()` | Add vectorized integer results `-1L`, `0L`, or `1L` |
 | `divmod` | `divmod()` | Add one-pass quotient and remainder returned as a named list of decimal vectors |
+| (none; R ecosystem) | `as_decimal()` Arrow methods, `arrow_as_data_frame()` | Add exact, first-class conversion to and from Arrow `decimal128()` / `decimal256()` arrays |
 
 The API is intentionally function-based rather than mirroring Python methods.
 Arguments recycle with vctrs, outputs preserve names from the longest input
@@ -39,8 +40,9 @@ The following Python/libmpdec capabilities are not part of 0.2.0:
 - digit-logical operations, shifts, and rotates;
 - coefficient tuple import/export and radix conversion;
 - Python-specific context, tuple, canonicality, and radix methods;
-- fixed-scale money subclasses, database/Arrow integration, and a downstream
-  C API;
+- fixed-scale money subclasses, database integration, and a downstream C API;
+- native import of Arrow buffers through `nanoarrow`, which the R-level cast
+  path makes unnecessary for speed;
 - storage redesign, caching, ALTREP, or performance work without profiling.
 
 These remain candidates for later releases. Exclusion is deliberate: 0.2.0
@@ -93,10 +95,25 @@ into the product definition.
 - Ensure one operation produces one aggregated flag/trap report and identifies
   the first failing element.
 
+### 6. Arrow interoperability
+
+- Add `as_decimal()` methods for Arrow `Array` and `ChunkedArray`, methods on
+  `arrow::infer_type()` and `arrow::as_arrow_array()` for `decimal`, and
+  `arrow_as_data_frame()` for a `Table` or `RecordBatch`.
+- Keep the work in R only; it rides on Arrow's own compute kernels and touches
+  nothing native.
+- Trust Arrow's decimal-to-string cast as canonical storage, guarded by a
+  property test, per [ADR 005](decisions/005-arrow-string-cast-canonical.md).
+- Detailed tasks and measurements live in
+  [Arrow Integration Plan](arrow-integration-plan.md).
+
 ## Implementation Contract
 
 - Put public advanced operations and small shared helpers in `R/advanced.R`.
 - Put tests in `tests/testthat/test-advanced.R`.
+- Keep Arrow interoperability in `R/arrow.R` and
+  `tests/testthat/test-arrow.R`, with every test guarded by
+  `skip_if_not_installed("arrow")`.
 - Reuse the existing unary, binary, and ternary native paths where their
   result shape and signal behavior fit.
 - Register every new `.Call` entry with fixed arity and keep dynamic symbols

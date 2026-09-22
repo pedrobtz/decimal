@@ -33,6 +33,7 @@ Prioritize Python-inspired operations with clear R-vector use cases:
 2. Remainder-near, sign copying, magnitude extrema, exponent shifting, and a
    combined quotient/remainder operation.
 3. Total comparisons with an R-appropriate return contract.
+4. Exact, first-class conversion to and from Arrow decimal arrays.
 
 The release scope, exclusions, sequence, and gates are maintained in the
 [0.2.0 Release Plan](release-0.2.0-plan.md). The broader executable backlog
@@ -42,9 +43,13 @@ remains in [Feature Expansion Plan](feature-expansion-plan.md).
 
 ### Integrations
 
-Explore fixed-scale or money subclasses, database and Arrow/DBI conversion,
-and a stable downstream C API only after concrete use cases define the
-contracts.
+Arrow conversion moved into 0.2.0; see the
+[Arrow Integration Plan](arrow-integration-plan.md). Explore fixed-scale or
+money subclasses, DBI conversion, and a stable downstream C API only after
+concrete use cases define the contracts. Native import of Arrow buffers
+through `nanoarrow` stays deferred: Arrow's own cast is faster than any
+per-element import, so it earns its place only for input that arrives without
+the arrow package.
 
 ### Performance
 

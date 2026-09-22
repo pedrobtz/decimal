@@ -18,6 +18,8 @@ Read the documents relevant to a change before editing:
   exclusions, sequencing, and release gates for the next release.
 - [Feature expansion plan](.agents/feature-expansion-plan.md) — detailed,
   task-by-task work for advanced libmpdec operations.
+- [Arrow integration plan](.agents/arrow-integration-plan.md) — exact
+  conversion to and from Arrow decimal arrays, with measurements.
 - [Testing](.agents/testing.md) — test layout, commands, and coverage policy.
 - [Release process](.agents/release-process.md) — documentation, CI, and CRAN
   release gates.
@@ -31,6 +33,8 @@ Read the documents relevant to a change before editing:
   session context, traps, and sticky flags.
 - [ADR 004](.agents/decisions/004-quiet-native-kernels.md) — native safety and
   signal aggregation.
+- [ADR 005](.agents/decisions/005-arrow-string-cast-canonical.md) — trusting
+  Arrow's decimal-to-string cast as canonical storage.
 
 ## Working Agreement
 
