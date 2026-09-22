@@ -213,8 +213,8 @@ out <- tibble::tibble(
 out
 ```
 
-A tibble is used here deliberately: decimal columns print through pillar, while
-a base `data.frame` does not yet render them.
+A base `data.frame` works too; a tibble is used here because pillar prints the
+column's type, which makes it easy to confirm the decimal survived the crossing.
 
 Parquet preserves the Arrow type, so a file written with a decimal column reads
 back as one and crosses over the same way:
