@@ -2,14 +2,9 @@ on:
   workflow_dispatch:
 
   # Gate the C, and only the C. These jobs take about seventeen minutes in
-  # parallel -- gctorture is essentially all of it -- which is worth paying on
-  # a change to src/ and worth paying on nothing else, so a vignette or a
-  # roxygen edit still gets the ordinary checks and nothing more.
-  #
-  # Dispatch-only was the previous arrangement, and it meant this ran when
-  # somebody remembered. Nobody did: the workflow was failing at startup from
-  # June until September without one run, and the leak it would have caught
-  # sat in the parse path for that whole time.
+  # parallel, nearly all of it gctorture, which is worth paying on a change to
+  # src/ and on nothing else: a vignette or roxygen edit still gets the
+  # ordinary checks and nothing more.
   pull_request:
     paths:
       - "src/**"
@@ -17,13 +12,11 @@ on:
 
 name: native-checks
 
-# These workflows only read. Declaring that here rather than inheriting it
-# keeps the grant visible at the call site, and keeps this caller working if
-# they ever ask for something wider again -- which is what broke it before:
-# they declared `read-all`, a called workflow cannot be granted more than its
-# caller holds, and the run died as `startup_failure` two seconds in with no
-# jobs and no annotation to explain it. r-actions v1.10.0 narrowed them to
-# `contents: read`, so this now matches what they use.
+# The called workflows declare `contents: read` (r-actions >= 1.10.0), and a
+# caller cannot grant a called workflow more than it holds itself. Declaring
+# the same grant here keeps it visible at the call site. A mismatch fails the
+# run as `startup_failure` with no jobs and no annotation, so if r-actions
+# ever widens its permissions, this block must widen with it.
 permissions:
   contents: read
 
