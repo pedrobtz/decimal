@@ -2,6 +2,27 @@
 
 ## decimal 0.1.1
 
+- [`summary()`](https://rdrr.io/r/base/summary.html) now works on
+  `decimal` vectors. It reports the same six statistics as
+  \[summary.default()\] plus an `NA's` count, computed in decimal
+  arithmetic and returned as a `decimal` vector, so figures that a
+  double would round are preserved. Quartiles use the type 7 definition,
+  matching [`stats::quantile()`](https://rdrr.io/r/stats/quantile.html).
+
+- Fixed [`is.na()`](https://rdrr.io/r/base/NA.html),
+  [`is.nan()`](https://rdrr.io/r/base/is.finite.html),
+  [`is.infinite()`](https://rdrr.io/r/base/is.finite.html),
+  [`is_qnan()`](https://pedrobtz.github.io/decimal/dev/reference/is_qnan.md)
+  and
+  [`is_snan()`](https://pedrobtz.github.io/decimal/dev/reference/is_snan.md)
+  returning malformed logical vectors. They forwarded mpdecimal’s flag
+  bits – 4 for `NaN`, 8 for `sNaN`, 2 for `Infinity` – instead of
+  `TRUE`. The results printed correctly and compared equal with `==`,
+  but [`which()`](https://rdrr.io/r/base/which.html) found no matching
+  elements, [`sum()`](https://rdrr.io/r/base/sum.html) over-counted, and
+  [`identical()`](https://rdrr.io/r/base/identical.html) was false
+  against the obvious expectation.
+
 - `DESCRIPTION` now declares `URL` and `BugReports`, so the CRAN page
   links to the source repository and the issue tracker.
 
