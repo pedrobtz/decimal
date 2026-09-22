@@ -47,9 +47,13 @@
 
 ## Arrow interoperability
 
+- [`decimal_arrow`](https://pedrobtz.github.io/decimal/dev/reference/decimal_arrow.md)
+  : Arrow interoperability
 - [`arrow_as_data_frame()`](https://pedrobtz.github.io/decimal/dev/reference/arrow_as_data_frame.md)
   : Convert an Arrow table to a data frame, keeping decimal columns
   exact
+- [`arrow_decimal_type()`](https://pedrobtz.github.io/decimal/dev/reference/arrow_decimal_type.md)
+  : Arrow type for a decimal column
 
 ## Contexts and signals
 

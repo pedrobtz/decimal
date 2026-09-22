@@ -75,7 +75,7 @@
 <p>Under the hood, decimal is built on:</p>
 <ul>
 <li><p><a href="https://www.bytereef.org/mpdecimal/doc/libmpdec/" class="external-link">mpdecimal</a>, the battle-tested C library behind Python’s <code>decimal</code> module, implementing the <a href="https://speleotrove.com/decimal/decarith.pdf" class="external-link">General Decimal Arithmetic</a> standard.</p></li>
-<li><p><a href="https://vctrs.r-lib.org" class="external-link">vctrs</a>, so decimal vectors work naturally in data frames, tibbles, <code>dplyr::mutate()</code>, joins, sorting, and everything else you already do with vectors.</p></li>
+<li><p><a href="https://vctrs.r-lib.org" class="external-link">vctrs</a>, so decimal vectors work naturally in data frames, tibbles, <code><a href="https://dplyr.tidyverse.org/reference/mutate.html" class="external-link">dplyr::mutate()</a></code>, joins, sorting, and everything else you already do with vectors.</p></li>
 </ul>
 <p>Highlights:</p>
 <ul>
@@ -122,8 +122,8 @@
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">sales</span> <span class="op">|&gt;</span></span>
-<span>  <span class="fu">mutate</span><span class="op">(</span>total <span class="op">=</span> <span class="va">price</span> <span class="op">*</span> <span class="va">qty</span><span class="op">)</span> <span class="op">|&gt;</span></span>
-<span>  <span class="fu">summarise</span><span class="op">(</span>revenue <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">total</span><span class="op">)</span><span class="op">)</span></span>
+<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/mutate.html" class="external-link">mutate</a></span><span class="op">(</span>total <span class="op">=</span> <span class="va">price</span> <span class="op">*</span> <span class="va">qty</span><span class="op">)</span> <span class="op">|&gt;</span></span>
+<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/summarise.html" class="external-link">summarise</a></span><span class="op">(</span>revenue <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">total</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt; # A tibble: 1 × 1</span></span>
 <span><span class="co">#&gt;   revenue</span></span>
 <span><span class="co">#&gt;     &lt;dec&gt;</span></span>

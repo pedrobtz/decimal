@@ -112,11 +112,12 @@ set. Without that option, character input uses the largest number of
 fractional digits found in the input, integer input uses scale zero, and
 double input raises an error. Quantization uses the active
 <code><a href="decimal_context.html">decimal_context()</a></code>.</p>
-<p>An Arrow <code>Array</code> or <code>ChunkedArray</code> of type <code>decimal128()</code> or <code>decimal256()</code>
-converts exactly, taking its scale from the Arrow type rather than from the
-values, so a chunk holding only whole numbers keeps its declared fractional
-digits. Any other Arrow type converts to an R vector first and then follows
-the rules above. See <code><a href="../articles/arrow-decimal-types.html">vignette("arrow-decimal-types")</a></code>.</p>
+<p>An Arrow <code>Array</code> or <code>ChunkedArray</code> of any decimal type converts exactly,
+taking its scale from the Arrow type rather than from the values, so a
+chunk holding only whole numbers keeps its declared fractional digits. An
+Arrow integer array converts exactly at every width. Any other Arrow type
+converts to an R vector first and then follows the rules above. See
+<a href="decimal_arrow.html">decimal_arrow</a> and <code><a href="../articles/arrow-decimal-types.html">vignette("arrow-decimal-types")</a></code>.</p>
     </div>
 
     <div class="section level2">

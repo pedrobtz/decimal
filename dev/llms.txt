@@ -31,8 +31,9 @@ Under the hood, decimal is built on:
   Arithmetic](https://speleotrove.com/decimal/decarith.pdf) standard.
 
 - [vctrs](https://vctrs.r-lib.org), so decimal vectors work naturally in
-  data frames, tibbles, `dplyr::mutate()`, joins, sorting, and
-  everything else you already do with vectors.
+  data frames, tibbles,
+  [`dplyr::mutate()`](https://dplyr.tidyverse.org/reference/mutate.html),
+  joins, sorting, and everything else you already do with vectors.
 
 Highlights:
 
@@ -211,9 +212,13 @@ BSD-2-Clause terms; see `inst/COPYRIGHTS`.
 
 ## Arrow interoperability
 
+- [`decimal_arrow`](https://pedrobtz.github.io/decimal/dev/reference/decimal_arrow.md)
+  : Arrow interoperability
 - [`arrow_as_data_frame()`](https://pedrobtz.github.io/decimal/dev/reference/arrow_as_data_frame.md)
   : Convert an Arrow table to a data frame, keeping decimal columns
   exact
+- [`arrow_decimal_type()`](https://pedrobtz.github.io/decimal/dev/reference/arrow_decimal_type.md)
+  : Arrow type for a decimal column
 
 ## Contexts and signals
 

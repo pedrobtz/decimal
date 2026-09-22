@@ -59,11 +59,13 @@ of fractional digits found in the input, integer input uses scale zero,
 and double input raises an error. Quantization uses the active
 [`decimal_context()`](https://pedrobtz.github.io/decimal/dev/reference/decimal_context.md).
 
-An Arrow `Array` or `ChunkedArray` of type `decimal128()` or
-`decimal256()` converts exactly, taking its scale from the Arrow type
-rather than from the values, so a chunk holding only whole numbers keeps
-its declared fractional digits. Any other Arrow type converts to an R
-vector first and then follows the rules above. See
+An Arrow `Array` or `ChunkedArray` of any decimal type converts exactly,
+taking its scale from the Arrow type rather than from the values, so a
+chunk holding only whole numbers keeps its declared fractional digits.
+An Arrow integer array converts exactly at every width. Any other Arrow
+type converts to an R vector first and then follows the rules above. See
+[decimal_arrow](https://pedrobtz.github.io/decimal/dev/reference/decimal_arrow.md)
+and
 [`vignette("arrow-decimal-types")`](https://pedrobtz.github.io/decimal/dev/articles/arrow-decimal-types.md).
 
 ## Examples

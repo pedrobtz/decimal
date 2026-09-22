@@ -31,8 +31,9 @@ Under the hood, decimal is built on:
   Arithmetic](https://speleotrove.com/decimal/decarith.pdf) standard.
 
 - [vctrs](https://vctrs.r-lib.org), so decimal vectors work naturally in
-  data frames, tibbles, `dplyr::mutate()`, joins, sorting, and
-  everything else you already do with vectors.
+  data frames, tibbles,
+  [`dplyr::mutate()`](https://dplyr.tidyverse.org/reference/mutate.html),
+  joins, sorting, and everything else you already do with vectors.
 
 Highlights:
 
