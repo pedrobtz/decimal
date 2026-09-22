@@ -632,6 +632,114 @@ SEXP decimal_c_validate_strings(SEXP x) {
   return out;
 }
 
+/* Fractional digits implied by a decimal string, matching the grammar the R
+ * implementation used before this was moved to C:
+ *
+ *   ^-?([0-9]+)(?:\.([0-9]+))?(?:[eE]([+-]?[0-9]+))?$
+ *
+ * The result is (digits after the point) - (exponent). Anything that does not
+ * match that grammar has no fractional-digit count and yields NA: that covers
+ * NA, infinities and NaNs, and also deliberately rejects forms mpdecimal would
+ * otherwise accept, such as a leading "+", a bare ".5" or a trailing "1.".
+ *
+ * Accumulation is done in int64 so that an exponent outside int range, or a
+ * difference that leaves it, yields NA exactly as R's integer arithmetic did.
+ */
+static int decimal_scan_string_scale(const char *s) {
+  const char *p = s;
+  int64_t frac = 0;
+  int64_t expo = 0;
+  int64_t scale;
+
+  if (*p == '-') {
+    ++p;
+  }
+
+  if (*p < '0' || *p > '9') {
+    return NA_INTEGER;
+  }
+  while (*p >= '0' && *p <= '9') {
+    ++p;
+  }
+
+  if (*p == '.') {
+    ++p;
+    if (*p < '0' || *p > '9') {
+      return NA_INTEGER;
+    }
+    while (*p >= '0' && *p <= '9') {
+      ++p;
+      ++frac;
+      if (frac > INT_MAX) {
+        return NA_INTEGER;
+      }
+    }
+  }
+
+  if (*p == 'e' || *p == 'E') {
+    int negative = 0;
+
+    ++p;
+    if (*p == '+' || *p == '-') {
+      negative = (*p == '-');
+      ++p;
+    }
+    if (*p < '0' || *p > '9') {
+      return NA_INTEGER;
+    }
+    while (*p >= '0' && *p <= '9') {
+      expo = expo * 10 + (*p - '0');
+      if (expo > (int64_t)INT_MAX + 1) {
+        return NA_INTEGER;
+      }
+      ++p;
+    }
+    if (negative) {
+      expo = -expo;
+    }
+    /* as.integer() rejected anything outside int range, including +2147483648 */
+    if (expo > INT_MAX || expo < -INT_MAX) {
+      return NA_INTEGER;
+    }
+  }
+
+  if (*p != '\0') {
+    return NA_INTEGER;
+  }
+
+  scale = frac - expo;
+  if (scale > INT_MAX || scale < -INT_MAX) {
+    return NA_INTEGER;
+  }
+
+  return (int)scale;
+}
+
+SEXP decimal_c_string_scale(SEXP x) {
+  R_xlen_t i;
+  SEXP out;
+
+  if (TYPEOF(x) != STRSXP) {
+    Rf_error("`x` must be a character vector");
+  }
+
+  out = PROTECT(Rf_allocVector(INTSXP, XLENGTH(x)));
+
+  for (i = 0; i < XLENGTH(x); ++i) {
+    SEXP elt = STRING_ELT(x, i);
+
+    if (i % 8192 == 0) {
+      R_CheckUserInterrupt();
+    }
+
+    INTEGER(out)[i] =
+        elt == NA_STRING ? NA_INTEGER : decimal_scan_string_scale(CHAR(elt));
+  }
+
+  UNPROTECT(1);
+  return out;
+}
+
 SEXP decimal_c_canonicalize_strings(SEXP x) {
   R_xlen_t i;
   SEXP out;

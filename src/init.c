@@ -8,6 +8,7 @@ SEXP decimal_c_normalize_context(SEXP precision, SEXP rounding, SEXP emax,
                                  SEXP clamp, SEXP allcr);
 SEXP decimal_c_validate_strings(SEXP x);
 SEXP decimal_c_canonicalize_strings(SEXP x);
+SEXP decimal_c_string_scale(SEXP x);
 SEXP decimal_c_classify_strings(SEXP x, SEXP precision, SEXP rounding,
                                 SEXP emax, SEXP emin, SEXP traps, SEXP flags,
                                 SEXP clamp, SEXP allcr);
@@ -55,6 +56,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"decimal_c_normalize_context", (DL_FUNC) &decimal_c_normalize_context, 8},
     {"decimal_c_validate_strings", (DL_FUNC) &decimal_c_validate_strings, 1},
     {"decimal_c_canonicalize_strings", (DL_FUNC) &decimal_c_canonicalize_strings, 1},
+    {"decimal_c_string_scale", (DL_FUNC) &decimal_c_string_scale, 1},
     {"decimal_c_classify_strings", (DL_FUNC) &decimal_c_classify_strings, 9},
     {"decimal_c_format_strings", (DL_FUNC) &decimal_c_format_strings, 2},
     {"decimal_c_from_double_strings", (DL_FUNC) &decimal_c_from_double_strings, 1},

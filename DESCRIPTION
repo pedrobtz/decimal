@@ -1,6 +1,6 @@
 Package: decimal
 Title: Exact Arbitrary-Precision Decimal Vectors
-Version: 0.1.0
+Version: 0.1.1
 Authors@R:
     c(
       person(
@@ -25,6 +25,8 @@ Description: Arbitrary-precision vectors with an exact decimal representation,
     <https://speleotrove.com/decimal/decarith.html>.
 License: MIT + file LICENSE
 Language: en-US
+URL: https://github.com/pedrobtz/decimal, https://pedrobtz.github.io/decimal/
+BugReports: https://github.com/pedrobtz/decimal/issues
 Depends:
     R (>= 4.2.0)
 Imports:
