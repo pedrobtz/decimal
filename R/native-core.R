@@ -134,6 +134,10 @@ decimal_context_call <- function(fun, ...) {
   .Call(decimal_c_canonicalize_strings, x)
 }
 
+.decimal_string_scale <- function(x) {
+  .Call(decimal_c_string_scale, x)
+}
+
 .decimal_classify_strings <- function(x) {
   decimal_context_call(.Call, decimal_c_classify_strings, x)
 }
