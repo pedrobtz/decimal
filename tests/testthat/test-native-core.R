@@ -145,3 +145,42 @@ test_that("string scale is NA when the exponent leaves integer range", {
 test_that("string scale rejects a non-character input", {
   expect_error(decimal:::.decimal_string_scale(1:3), "must be a character vector")
 })
+
+test_that("every kernel rejects an invalid decimal string and reports its index", {
+  # The public API canonicalizes before any other kernel sees a string, so these
+  # parse-failure paths are only reachable through the internal wrappers. Each
+  # frees the handles it holds before raising; driving every operand position
+  # here is what lets the valgrind job check that.
+  bad <- c("1", "not-a-decimal")
+  ok <- c("1", "2")
+  msg <- "Invalid decimal string at element 2"
+
+  expect_error(decimal:::.decimal_canonicalize_strings(bad), msg)
+  expect_error(decimal:::.decimal_classify_strings(bad), msg)
+  expect_error(decimal:::.decimal_format_strings(bad), msg)
+  expect_error(decimal:::.decimal_to_double_strings(bad), msg)
+  expect_error(decimal:::.decimal_to_integer_strings(bad), msg)
+  expect_error(decimal:::.decimal_equal_proxy_strings(bad), msg)
+  expect_error(decimal:::.decimal_order_proxy_strings(bad), msg)
+  expect_error(decimal:::.decimal_unary_op_strings(bad, "-"), msg)
+  expect_error(decimal:::.decimal_math_op_strings(bad, "abs"), msg)
+  expect_error(decimal:::.decimal_rescale_exact_strings(bad, 0L), msg)
+  expect_error(decimal:::.decimal_adjusted_strings(bad), msg)
+  expect_error(decimal:::.decimal_predicate_strings(bad, "nan"), msg)
+  expect_error(decimal:::.decimal_apply_context(bad), msg)
+
+  expect_error(decimal:::.decimal_binary_op_strings(bad, ok, "+"), msg)
+  expect_error(decimal:::.decimal_binary_op_strings(ok, bad, "+"), msg)
+  expect_error(decimal:::.decimal_compare_strings(bad, ok, "=="), msg)
+  expect_error(decimal:::.decimal_compare_strings(ok, bad, "=="), msg)
+  expect_error(decimal:::.decimal_quantize_strings(bad, ok), msg)
+  expect_error(decimal:::.decimal_quantize_strings(ok, bad), msg)
+  expect_error(decimal:::.decimal_same_quantum_strings(bad, ok), msg)
+  expect_error(decimal:::.decimal_same_quantum_strings(ok, bad), msg)
+  expect_error(decimal:::.decimal_divide_strings(bad, ok), msg)
+  expect_error(decimal:::.decimal_divide_strings(ok, bad), msg)
+
+  expect_error(decimal:::.decimal_fma_strings(bad, ok, ok), msg)
+  expect_error(decimal:::.decimal_fma_strings(ok, bad, ok), msg)
+  expect_error(decimal:::.decimal_fma_strings(ok, ok, bad), msg)
+})
