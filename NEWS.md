@@ -1,10 +1,11 @@
 # decimal 0.1.1
 
-- Fixed a memory leak on the error paths of the native kernels. An R error
+- Fixed memory leaks on the error paths of the native kernels. An R error
   raised while an `mpd_t` was allocated abandoned it, because R's error
   handling unwinds past the code that would have freed it. Parsing an invalid
-  decimal string leaked every handle the operation held; two allocation-failure
-  paths leaked one each.
+  decimal string leaked every handle the operation held, and an allocation
+  failure part-way through setting up an operation leaked the handles already
+  allocated.
 
 - `summary()` now works on `decimal` vectors. It reports the same six
   statistics as [summary.default()] plus an `NA's` count, computed in decimal

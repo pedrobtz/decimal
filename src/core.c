@@ -71,6 +71,16 @@ static mpd_t *decimal_qnew_checked(void) {
   return dec;
 }
 
+/* mpd_del() dereferences its argument, so freeing a partially allocated set of
+ * handles needs a NULL check first. Kernels that hold several handles allocate
+ * them all with mpd_qnew() and check afterwards, because decimal_qnew_checked()
+ * raising on the second allocation would leak the first. */
+static void decimal_del_if_allocated(mpd_t *dec) {
+  if (dec != NULL) {
+    mpd_del(dec);
+  }
+}
+
 static int decimal_rounding_from_name(const char *name) {
   int i;
 
@@ -192,15 +202,8 @@ static void decimal_context_from_args(
   }
 }
 
-/* Parsing is split from reporting because Rf_error() does not return: it
- * longjmps past the rest of the caller, including the mpd_del() calls that
- * would have freed the handles this iteration allocated. The previous version
- * raised from inside the parse, so an invalid string leaked every live handle
- * -- which valgrind found as 48 direct and 16 indirect bytes lost through
- * decimal_c_canonicalize_strings(), one block per erroring call.
- *
- * Callers now free what they hold and then call decimal_abort_parse(), the
- * same shape the MPD_Malloc_error and mpd_to_sci() paths already use.
+/* Parsing never raises: Rf_error() longjmps past the caller's mpd_del() calls,
+ * so a caller frees the handles it holds and then calls decimal_abort_parse().
  *
  * Returns 1 when `dec` holds the parsed value, 0 when `status` explains why
  * it does not. */
@@ -211,8 +214,7 @@ static int decimal_parse_exact(mpd_t *dec, SEXP x, R_xlen_t index,
   return *status == 0;
 }
 
-/* Never returns. */
-static void decimal_abort_parse(uint32_t status, R_xlen_t index) {
+NORET static void decimal_abort_parse(uint32_t status, R_xlen_t index) {
   if (status & MPD_Malloc_error) {
     Rf_error("mpdecimal allocation failure while parsing element %lld",
              (long long)index + 1);
@@ -269,12 +271,6 @@ typedef void (*decimal_unary_fn)(mpd_t *, const mpd_t *, const mpd_context_t *,
 typedef void (*decimal_binary_fn)(mpd_t *, const mpd_t *, const mpd_t *,
                                   const mpd_context_t *, uint32_t *);
 
-static void decimal_abort_alloc_status(uint32_t status, const char *message) {
-  if (status & MPD_Malloc_error) {
-    Rf_error("%s", message);
-  }
-}
-
 static char *decimal_digits_from_text(const char *text) {
   size_t n = strlen(text);
   char *digits = (char *)R_alloc(n + 2, sizeof(char));
@@ -326,8 +322,6 @@ static char *decimal_equal_key(mpd_t *dec) {
   reduced = decimal_qnew_checked();
   mpd_qreduce(reduced, dec, &ctx, &status);
 
-  /* Freed here rather than through decimal_abort_alloc_status(), which raises
-   * and therefore never returns to the mpd_del() below. */
   if (status & MPD_Malloc_error) {
     mpd_del(reduced);
     Rf_error("mpdecimal allocation failure during normalization");
@@ -378,8 +372,6 @@ static char *decimal_order_key(mpd_t *dec) {
   reduced = decimal_qnew_checked();
   mpd_qreduce(reduced, dec, &ctx, &status);
 
-  /* Freed here rather than through decimal_abort_alloc_status(), which raises
-   * and therefore never returns to the mpd_del() below. */
   if (status & MPD_Malloc_error) {
     mpd_del(reduced);
     Rf_error("mpdecimal allocation failure during ordering");
@@ -518,7 +510,10 @@ static void decimal_normalize_op(mpd_t *result, const mpd_t *a,
   mpd_qreduce(result, a, ctx, status);
 }
 
-static void decimal_set_from_double_exact(mpd_t *result, double value) {
+/* Returns 0 when `result` holds the exact value, otherwise the status that
+ * explains why it does not. Never raises: the caller owns `result` and must
+ * free it before reporting. */
+static uint32_t decimal_set_from_double_exact(mpd_t *result, double value) {
   union {
     double d;
     uint64_t u;
@@ -544,8 +539,7 @@ static void decimal_set_from_double_exact(mpd_t *result, double value) {
     if (sign) {
       mpd_set_negative(result);
     }
-    decimal_abort_status(status, "Unable to convert zero from double");
-    return;
+    return status;
   }
 
   significand = raw_exponent == 0 ? fraction : (fraction | (UINT64_C(1) << 52));
@@ -560,9 +554,15 @@ static void decimal_set_from_double_exact(mpd_t *result, double value) {
   ctx.allcr = 1;
   ctx.newtrap = 0;
 
-  sig = decimal_qnew_checked();
-  pow2 = decimal_qnew_checked();
-  exp = decimal_qnew_checked();
+  sig = mpd_qnew();
+  pow2 = mpd_qnew();
+  exp = mpd_qnew();
+  if (sig == NULL || pow2 == NULL || exp == NULL) {
+    decimal_del_if_allocated(sig);
+    decimal_del_if_allocated(pow2);
+    decimal_del_if_allocated(exp);
+    return MPD_Malloc_error;
+  }
 
   mpd_qset_u64_exact(sig, significand, &status);
   mpd_qset_u64_exact(pow2, 2, &status);
@@ -587,7 +587,7 @@ static void decimal_set_from_double_exact(mpd_t *result, double value) {
   mpd_del(pow2);
   mpd_del(exp);
 
-  decimal_abort_status(status, "Unable to convert double exactly");
+  return status;
 }
 
 SEXP decimal_c_normalize_context(SEXP precision, SEXP rounding, SEXP emax,
@@ -939,9 +939,15 @@ SEXP decimal_c_from_double_strings(SEXP x) {
 
     {
       mpd_t *dec = decimal_qnew_checked();
+      uint32_t status;
       char *text;
 
-      decimal_set_from_double_exact(dec, value);
+      status = decimal_set_from_double_exact(dec, value);
+      if (status != 0) {
+        mpd_del(dec);
+        decimal_abort_status(status, "Unable to convert double exactly");
+      }
+
       text = mpd_to_sci(dec, 0);
 
       if (text == NULL) {
@@ -1060,8 +1066,13 @@ SEXP decimal_c_to_integer_strings(SEXP x) {
       continue;
     }
 
-    dec = decimal_qnew_checked();
-    trunc = decimal_qnew_checked();
+    dec = mpd_qnew();
+    trunc = mpd_qnew();
+    if (dec == NULL || trunc == NULL) {
+      decimal_del_if_allocated(dec);
+      decimal_del_if_allocated(trunc);
+      Rf_error("mpdecimal allocation failure");
+    }
     if (!decimal_parse_exact(dec, x, i, &parse_status)) {
       mpd_del(dec);
       mpd_del(trunc);
@@ -1221,8 +1232,13 @@ SEXP decimal_c_unary_op_strings(SEXP x, SEXP op, SEXP precision, SEXP rounding,
       continue;
     }
 
-    input = decimal_qnew_checked();
-    result = decimal_qnew_checked();
+    input = mpd_qnew();
+    result = mpd_qnew();
+    if (input == NULL || result == NULL) {
+      decimal_del_if_allocated(input);
+      decimal_del_if_allocated(result);
+      Rf_error("mpdecimal allocation failure");
+    }
     if (!decimal_parse_exact(input, x, i, &parse_status)) {
       mpd_del(input);
       mpd_del(result);
@@ -1310,16 +1326,17 @@ SEXP decimal_c_binary_op_strings(SEXP x, SEXP y, SEXP op, SEXP precision,
       continue;
     }
 
-    lhs = decimal_qnew_checked();
-    rhs = decimal_qnew_checked();
-    result = decimal_qnew_checked();
-    if (!decimal_parse_exact(lhs, x, i, &parse_status)) {
-      mpd_del(lhs);
-      mpd_del(rhs);
-      mpd_del(result);
-      decimal_abort_parse(parse_status, i);
+    lhs = mpd_qnew();
+    rhs = mpd_qnew();
+    result = mpd_qnew();
+    if (lhs == NULL || rhs == NULL || result == NULL) {
+      decimal_del_if_allocated(lhs);
+      decimal_del_if_allocated(rhs);
+      decimal_del_if_allocated(result);
+      Rf_error("mpdecimal allocation failure");
     }
-    if (!decimal_parse_exact(rhs, y, i, &parse_status)) {
+    if (!decimal_parse_exact(lhs, x, i, &parse_status) ||
+        !decimal_parse_exact(rhs, y, i, &parse_status)) {
       mpd_del(lhs);
       mpd_del(rhs);
       mpd_del(result);
@@ -1405,14 +1422,15 @@ SEXP decimal_c_compare_strings(SEXP x, SEXP y, SEXP op, SEXP precision,
       continue;
     }
 
-    lhs = decimal_qnew_checked();
-    rhs = decimal_qnew_checked();
-    if (!decimal_parse_exact(lhs, x, i, &parse_status)) {
-      mpd_del(lhs);
-      mpd_del(rhs);
-      decimal_abort_parse(parse_status, i);
+    lhs = mpd_qnew();
+    rhs = mpd_qnew();
+    if (lhs == NULL || rhs == NULL) {
+      decimal_del_if_allocated(lhs);
+      decimal_del_if_allocated(rhs);
+      Rf_error("mpdecimal allocation failure");
     }
-    if (!decimal_parse_exact(rhs, y, i, &parse_status)) {
+    if (!decimal_parse_exact(lhs, x, i, &parse_status) ||
+        !decimal_parse_exact(rhs, y, i, &parse_status)) {
       mpd_del(lhs);
       mpd_del(rhs);
       decimal_abort_parse(parse_status, i);
@@ -1520,8 +1538,13 @@ SEXP decimal_c_math_op_strings(SEXP x, SEXP op, SEXP precision, SEXP rounding,
       continue;
     }
 
-    input = decimal_qnew_checked();
-    result = decimal_qnew_checked();
+    input = mpd_qnew();
+    result = mpd_qnew();
+    if (input == NULL || result == NULL) {
+      decimal_del_if_allocated(input);
+      decimal_del_if_allocated(result);
+      Rf_error("mpdecimal allocation failure");
+    }
     if (!decimal_parse_exact(input, x, i, &parse_status)) {
       mpd_del(input);
       mpd_del(result);
@@ -1609,16 +1632,17 @@ SEXP decimal_c_quantize_strings(SEXP x, SEXP y, SEXP precision, SEXP rounding,
       continue;
     }
 
-    lhs = decimal_qnew_checked();
-    rhs = decimal_qnew_checked();
-    result = decimal_qnew_checked();
-    if (!decimal_parse_exact(lhs, x, i, &parse_status)) {
-      mpd_del(lhs);
-      mpd_del(rhs);
-      mpd_del(result);
-      decimal_abort_parse(parse_status, i);
+    lhs = mpd_qnew();
+    rhs = mpd_qnew();
+    result = mpd_qnew();
+    if (lhs == NULL || rhs == NULL || result == NULL) {
+      decimal_del_if_allocated(lhs);
+      decimal_del_if_allocated(rhs);
+      decimal_del_if_allocated(result);
+      Rf_error("mpdecimal allocation failure");
     }
-    if (!decimal_parse_exact(rhs, y, i, &parse_status)) {
+    if (!decimal_parse_exact(lhs, x, i, &parse_status) ||
+        !decimal_parse_exact(rhs, y, i, &parse_status)) {
       mpd_del(lhs);
       mpd_del(rhs);
       mpd_del(result);
@@ -1698,8 +1722,13 @@ SEXP decimal_c_rescale_exact_strings(SEXP x, SEXP exponent) {
       continue;
     }
 
-    input = decimal_qnew_checked();
-    result = decimal_qnew_checked();
+    input = mpd_qnew();
+    result = mpd_qnew();
+    if (input == NULL || result == NULL) {
+      decimal_del_if_allocated(input);
+      decimal_del_if_allocated(result);
+      Rf_error("mpdecimal allocation failure");
+    }
     if (!decimal_parse_exact(input, x, i, &parse_status)) {
       mpd_del(input);
       mpd_del(result);
@@ -1772,25 +1801,20 @@ SEXP decimal_c_fma_strings(SEXP x, SEXP y, SEXP z, SEXP precision,
       continue;
     }
 
-    lhs = decimal_qnew_checked();
-    rhs = decimal_qnew_checked();
-    add = decimal_qnew_checked();
-    result = decimal_qnew_checked();
-    if (!decimal_parse_exact(lhs, x, i, &parse_status)) {
-      mpd_del(lhs);
-      mpd_del(rhs);
-      mpd_del(add);
-      mpd_del(result);
-      decimal_abort_parse(parse_status, i);
+    lhs = mpd_qnew();
+    rhs = mpd_qnew();
+    add = mpd_qnew();
+    result = mpd_qnew();
+    if (lhs == NULL || rhs == NULL || add == NULL || result == NULL) {
+      decimal_del_if_allocated(lhs);
+      decimal_del_if_allocated(rhs);
+      decimal_del_if_allocated(add);
+      decimal_del_if_allocated(result);
+      Rf_error("mpdecimal allocation failure");
     }
-    if (!decimal_parse_exact(rhs, y, i, &parse_status)) {
-      mpd_del(lhs);
-      mpd_del(rhs);
-      mpd_del(add);
-      mpd_del(result);
-      decimal_abort_parse(parse_status, i);
-    }
-    if (!decimal_parse_exact(add, z, i, &parse_status)) {
+    if (!decimal_parse_exact(lhs, x, i, &parse_status) ||
+        !decimal_parse_exact(rhs, y, i, &parse_status) ||
+        !decimal_parse_exact(add, z, i, &parse_status)) {
       mpd_del(lhs);
       mpd_del(rhs);
       mpd_del(add);
@@ -1864,14 +1888,15 @@ SEXP decimal_c_same_quantum_strings(SEXP x, SEXP y) {
       continue;
     }
 
-    lhs = decimal_qnew_checked();
-    rhs = decimal_qnew_checked();
-    if (!decimal_parse_exact(lhs, x, i, &parse_status)) {
-      mpd_del(lhs);
-      mpd_del(rhs);
-      decimal_abort_parse(parse_status, i);
+    lhs = mpd_qnew();
+    rhs = mpd_qnew();
+    if (lhs == NULL || rhs == NULL) {
+      decimal_del_if_allocated(lhs);
+      decimal_del_if_allocated(rhs);
+      Rf_error("mpdecimal allocation failure");
     }
-    if (!decimal_parse_exact(rhs, y, i, &parse_status)) {
+    if (!decimal_parse_exact(lhs, x, i, &parse_status) ||
+        !decimal_parse_exact(rhs, y, i, &parse_status)) {
       mpd_del(lhs);
       mpd_del(rhs);
       decimal_abort_parse(parse_status, i);
@@ -2045,8 +2070,13 @@ SEXP decimal_c_apply_context(SEXP x, SEXP precision, SEXP rounding, SEXP emax,
       continue;
     }
 
-    input = decimal_qnew_checked();
-    result = decimal_qnew_checked();
+    input = mpd_qnew();
+    result = mpd_qnew();
+    if (input == NULL || result == NULL) {
+      decimal_del_if_allocated(input);
+      decimal_del_if_allocated(result);
+      Rf_error("mpdecimal allocation failure");
+    }
     if (!decimal_parse_exact(input, x, i, &parse_status)) {
       mpd_del(input);
       mpd_del(result);
@@ -2124,16 +2154,17 @@ SEXP decimal_c_divide_strings(SEXP x, SEXP y, SEXP precision, SEXP rounding,
       continue;
     }
 
-    lhs = decimal_qnew_checked();
-    rhs = decimal_qnew_checked();
-    result = decimal_qnew_checked();
-    if (!decimal_parse_exact(lhs, x, i, &parse_status)) {
-      mpd_del(lhs);
-      mpd_del(rhs);
-      mpd_del(result);
-      decimal_abort_parse(parse_status, i);
+    lhs = mpd_qnew();
+    rhs = mpd_qnew();
+    result = mpd_qnew();
+    if (lhs == NULL || rhs == NULL || result == NULL) {
+      decimal_del_if_allocated(lhs);
+      decimal_del_if_allocated(rhs);
+      decimal_del_if_allocated(result);
+      Rf_error("mpdecimal allocation failure");
     }
-    if (!decimal_parse_exact(rhs, y, i, &parse_status)) {
+    if (!decimal_parse_exact(lhs, x, i, &parse_status) ||
+        !decimal_parse_exact(rhs, y, i, &parse_status)) {
       mpd_del(lhs);
       mpd_del(rhs);
       mpd_del(result);
