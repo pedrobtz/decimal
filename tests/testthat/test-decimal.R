@@ -131,6 +131,11 @@ test_that("decimal formatting and reverse coercions behave as specified", {
 
   expect_identical(format(x), c("1.2300", "-0.0000", "NaN", NA_character_))
   expect_error(format(x, scientific = TRUE), "`...` must be empty")
+  # `format.data.frame()` injects these into `...` for every column; they are
+  # tolerated so a decimal column can be printed, but never honoured.
+  expect_identical(format(x, digits = 2), format(x))
+  expect_identical(format(x, na.encode = FALSE), format(x))
+  expect_identical(format(x, justify = "left"), format(x))
   expect_error(format(x, engineering = 1), "`engineering` must be")
   expect_identical(
     format(decimal_from_double(0.000000123, scale = 20), engineering = TRUE),
@@ -261,4 +266,15 @@ test_that("tibble display uses decimal type labels", {
   )))
   expect_true(any(grepl("<dec>", out, fixed = TRUE)))
   expect_true(any(grepl("1.2300", out, fixed = TRUE)))
+})
+
+test_that("decimal columns print inside a base data frame", {
+  df <- data.frame(id = 1:3)
+  df$amount <- decimal(c("1.25", "2.50", NA))
+
+  # `print.data.frame()` reaches `format.decimal()` through
+  # `format.data.frame()`, which passes `digits`, `na.encode` and `justify`.
+  expect_no_error(capture.output(print(df)))
+  # `format.data.frame()` wraps each formatted column in `AsIs`.
+  expect_identical(as.character(format(df)$amount), c("1.25", "2.50", NA))
 })

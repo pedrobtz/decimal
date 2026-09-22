@@ -561,8 +561,15 @@ decimal_from_double <- function(x, scale = NULL) {
 #' @export
 NA_decimal_ <- new_decimal(NA_character_)
 
+# `digits`, `na.encode` and `justify` are accepted and ignored: base's
+# `format.data.frame()` injects them into `...` for every column, so rejecting
+# them would make a decimal column impossible to print in a data frame. They
+# are deliberately not honoured -- rounding the display of an exact decimal is
+# the surprise this package exists to avoid. Anything else in `...` is still an
+# error, so `format(x, scientific = TRUE)` fails loudly rather than pretending.
 #' @export
-format.decimal <- function(x, ..., engineering = FALSE) {
+format.decimal <- function(x, ..., engineering = FALSE,
+                           digits = NULL, na.encode = TRUE, justify = NULL) {
   rlang::check_dots_empty()
   engineering <- decimal_scalar_flag(engineering, "engineering")
   values <- vctrs::vec_data(x)
