@@ -13,12 +13,13 @@ arrow_as_data_frame(x)
 A data frame whose decimal columns are \code{decimal} vectors.
 }
 \description{
-\code{as.data.frame()} on an Arrow \code{Table} or \code{RecordBatch} converts decimal
-columns through \code{double}, which silently drops digits beyond the
-seventeenth. \code{arrow_as_data_frame()} converts the decimal columns with
+\code{as.data.frame()} on an Arrow \code{Table} or \code{RecordBatch} converts a plain
+decimal field through \code{double}, which silently drops digits beyond the
+seventeenth. \code{arrow_as_data_frame()} converts those fields with
 \code{\link[=as_decimal]{as_decimal()}} instead, so they arrive as \code{decimal} vectors with the scale
-declared by their Arrow type. Every other column is converted by arrow in
-the usual way.
+declared by their Arrow type. Every other column, including decimal columns
+this package wrote as its extension type, is converted by arrow in the
+usual way.
 }
 \examples{
 if (requireNamespace("arrow", quietly = TRUE)) {
@@ -30,4 +31,8 @@ if (requireNamespace("arrow", quietly = TRUE)) {
   )
   arrow_as_data_frame(tab)
 }
+}
+\seealso{
+\link{decimal_arrow} for when a decimal field is plain and when it is
+the extension type.
 }

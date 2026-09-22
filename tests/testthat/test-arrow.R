@@ -2,6 +2,8 @@ arrow_decimal <- function(values, precision, scale) {
   arrow::Array$create(values)$cast(arrow::decimal128(precision, scale))
 }
 
+# Arrow to decimal ----------------------------------------------------------
+
 test_that("as_decimal() reads an Arrow decimal128 array exactly", {
   skip_if_not_installed("arrow")
 
@@ -37,6 +39,18 @@ test_that("as_decimal() reads an Arrow decimal256 array exactly", {
       "0.10000000000000000001"
     )
   )
+})
+
+test_that("as_decimal() reads the narrow decimal32 and decimal64 types", {
+  skip_if_not_installed("arrow")
+
+  d32 <- arrow::Array$create(c("1234.5", "-0.1"))$cast(arrow::decimal32(9, 2))
+  d64 <- arrow::Array$create("1234567890123456.78")$cast(
+    arrow::decimal64(18, 2)
+  )
+
+  expect_identical(as_decimal(d32), decimal(c("1234.50", "-0.10")))
+  expect_identical(as_decimal(d64), decimal("1234567890123456.78"))
 })
 
 test_that("Arrow nulls become missing decimals", {
@@ -101,16 +115,42 @@ test_that("as_decimal() reads a chunked Arrow column", {
   expect_identical(out, decimal(c("1.25", "2.50", "3.75")))
 })
 
-test_that("as_decimal() falls back to the R conversion for non-decimal arrays", {
+test_that("as_decimal() converts Arrow integer arrays exactly at every width", {
+  skip_if_not_installed("arrow")
+
+  expect_identical(
+    as_decimal(arrow::Array$create(1:3)),
+    decimal(c("1", "2", "3"))
+  )
+
+  # 2^53 + 1: a double cannot hold it, and as.vector() returns integer64.
+  big <- arrow::Array$create(c("9007199254740993", NA))$cast(arrow::int64())
+  expect_identical(as_decimal(big), decimal(c("9007199254740993", NA)))
+
+  umax <- arrow::Array$create("18446744073709551615")$cast(arrow::uint64())
+  expect_identical(as_decimal(umax), decimal("18446744073709551615"))
+
+  cents <- arrow::Array$create(c(12345L, -5L))$cast(arrow::int64())
+  expect_identical(
+    as_decimal(cents, scale = 2L),
+    decimal(c("12345.00", "-5.00"))
+  )
+})
+
+test_that("as_decimal() falls back to the R conversion for other arrays", {
   skip_if_not_installed("arrow")
 
   expect_identical(
     as_decimal(arrow::Array$create(c("1.2", "3.45"))),
     decimal(c("1.2", "3.45"))
   )
+  expect_error(
+    as_decimal(arrow::Array$create(0.1)),
+    "`scale` must be provided"
+  )
   expect_identical(
-    as_decimal(arrow::Array$create(1:3)),
-    decimal(c("1", "2", "3"))
+    as_decimal(arrow::Array$create(0.5), scale = 1L),
+    decimal("0.5")
   )
 })
 
@@ -138,10 +178,22 @@ test_that("Arrow's decimal-to-string cast matches the canonical form", {
     )
   }
 
+  widths <- list(
+    list(type = arrow::decimal32, precision = 9L),
+    list(type = arrow::decimal64, precision = 18L),
+    list(type = arrow::decimal128, precision = 38L),
+    list(type = arrow::decimal256, precision = 76L)
+  )
+
   for (scale in c(-5L, 0L, 2L, 7L, 20L, 38L)) {
-    for (width in c(38L, 76L)) {
-      type <- if (width == 38L) arrow::decimal128 else arrow::decimal256
-      counts <- sample(seq_len(min(width, 30L)), 40L, replace = TRUE)
+    for (width in widths) {
+      precision <- width$precision
+      if (scale > precision) {
+        next
+      }
+      # Digits left for the coefficient once negative-scale zeros are added.
+      max_digits <- min(precision - max(0L, -scale), 30L)
+      counts <- sample(seq_len(max_digits), 40L, replace = TRUE)
       digits <- vapply(
         counts,
         function(n) paste(sample(0:9, n, replace = TRUE), collapse = ""),
@@ -156,7 +208,7 @@ test_that("Arrow's decimal-to-string cast matches the canonical form", {
         NA
       )
 
-      x <- arrow::Array$create(values)$cast(type(width, scale))
+      x <- arrow::Array$create(values)$cast(width$type(precision, scale))
       trusted <- vctrs::vec_data(as_decimal(x))
       # `decimal()` re-parses and re-canonicalizes the same strings.
       validated <- vctrs::vec_data(
@@ -168,21 +220,27 @@ test_that("Arrow's decimal-to-string cast matches the canonical form", {
   }
 })
 
-test_that("infer_type() reports an Arrow decimal type for decimal vectors", {
+# Decimal to Arrow ----------------------------------------------------------
+
+test_that("infer_type() reports the extension type over a plain decimal", {
   skip_if_not_installed("arrow")
 
   type <- arrow::infer_type(decimal(c("1.25", "-12345.50")))
 
-  expect_s3_class(type, "Decimal128Type")
-  expect_identical(type$ToString(), "decimal128(7, 2)")
+  expect_s3_class(type, "DecimalExtensionType")
+  expect_identical(type$extension_name(), "r.decimal")
+  expect_identical(type$storage_type()$ToString(), "decimal128(7, 2)")
+  expect_identical(type$ToString(), "decimal<decimal128(7, 2)>")
 })
 
 test_that("infer_type() widens to decimal256 and errors past its limit", {
   skip_if_not_installed("arrow")
 
   wide <- decimal(paste0(strrep("9", 60), ".5"))
-  expect_s3_class(arrow::infer_type(wide), "Decimal256Type")
-  expect_identical(arrow::infer_type(wide)$ToString(), "decimal256(61, 1)")
+  expect_identical(
+    arrow::infer_type(wide)$storage_type()$ToString(),
+    "decimal256(61, 1)"
+  )
 
   expect_error(
     arrow::infer_type(decimal(strrep("9", 90))),
@@ -194,16 +252,31 @@ test_that("infer_type() falls back to a single digit for all-missing vectors", {
   skip_if_not_installed("arrow")
 
   expect_identical(
-    arrow::infer_type(decimal(NA_character_))$ToString(),
+    arrow::infer_type(decimal(NA_character_))$storage_type()$ToString(),
     "decimal128(1, 0)"
   )
   expect_identical(
-    arrow::infer_type(decimal(character()))$ToString(),
+    arrow::infer_type(decimal(character()))$storage_type()$ToString(),
     "decimal128(1, 0)"
   )
 })
 
-test_that("Arrow conversion rejects infinities and NaNs", {
+test_that("the decimal.arrow_extension option switches to plain fields", {
+  skip_if_not_installed("arrow")
+  withr::local_options(decimal.arrow_extension = FALSE)
+
+  x <- decimal(c("1.25", "2.50"))
+  expect_identical(arrow::infer_type(x)$ToString(), "decimal128(3, 2)")
+
+  tab <- arrow::arrow_table(amount = x)
+  expect_identical(
+    tab$schema$GetFieldByName("amount")$type$ToString(),
+    "decimal128(3, 2)"
+  )
+  expect_identical(as_decimal(tab$amount), x)
+})
+
+test_that("Arrow conversion rejects infinities and NaNs for any decimal target", {
   skip_if_not_installed("arrow")
 
   expect_error(
@@ -214,80 +287,164 @@ test_that("Arrow conversion rejects infinities and NaNs", {
     arrow::as_arrow_array(decimal(c("1.50", "Infinity"))),
     "element 2"
   )
+  expect_error(
+    arrow::as_arrow_array(
+      decimal(c("1.50", "NaN")),
+      type = arrow::decimal128(10, 1)
+    ),
+    "cannot represent infinities or NaNs"
+  )
+  # A string target can hold them.
+  expect_identical(
+    as.vector(arrow::as_arrow_array(
+      decimal(c("1.50", "NaN")),
+      type = arrow::string()
+    )),
+    c("1.50", "NaN")
+  )
 })
 
-test_that("as_arrow_array() converts exactly and honours a pinned type", {
+test_that("as_arrow_array() wraps a real decimal, and a pinned type is honoured", {
   skip_if_not_installed("arrow")
 
   x <- decimal(c("1.25", NA, "-12345.50"))
   out <- arrow::as_arrow_array(x)
 
-  expect_identical(out$type$ToString(), "decimal128(7, 2)")
+  expect_s3_class(out, "ExtensionArray")
+  expect_identical(out$type$ToString(), "decimal<decimal128(7, 2)>")
+  expect_identical(out$storage()$type$ToString(), "decimal128(7, 2)")
   expect_identical(as_decimal(out), x)
+  expect_identical(as.vector(out), x)
 
-  pinned <- arrow::as_arrow_array(x, type = arrow::decimal128(20, 2))
-  expect_identical(pinned$type$ToString(), "decimal128(20, 2)")
-  expect_identical(as_decimal(pinned), x)
+  plain <- arrow::as_arrow_array(x, type = arrow::decimal128(20, 2))
+  expect_identical(plain$type$ToString(), "decimal128(20, 2)")
+  expect_identical(as_decimal(plain), x)
+
+  wide <- arrow::as_arrow_array(x, type = arrow_decimal_type(20, 2))
+  expect_identical(wide$type$ToString(), "decimal<decimal128(20, 2)>")
+  expect_identical(as.vector(wide), x)
 })
 
-test_that("a decimal column survives arrow_table() and Parquet", {
+test_that("arrow_decimal_type() builds the extension type at either width", {
   skip_if_not_installed("arrow")
 
-  x <- decimal(c("100.05", "99999999999999999999.99"))
-  tab <- arrow::arrow_table(id = 1:2, amount = x)
+  expect_identical(
+    arrow_decimal_type(20, 2)$storage_type()$ToString(),
+    "decimal128(20, 2)"
+  )
+  expect_identical(
+    arrow_decimal_type(50, 10)$storage_type()$ToString(),
+    "decimal256(50, 10)"
+  )
+})
 
+test_that("a decimal column round-trips through tables, Parquet, and datasets", {
+  skip_if_not_installed("arrow")
+
+  x <- decimal(c("100.05", "99999999999999999999.99", NA))
+  df <- data.frame(id = 1:3)
+  df$amount <- x
+
+  tab <- arrow::arrow_table(df)
   expect_identical(
     tab$schema$GetFieldByName("amount")$type$ToString(),
-    "decimal128(22, 2)"
+    "decimal<decimal128(22, 2)>"
   )
+  # arrow's own conversion, the path every reader takes by default.
+  expect_identical(as.data.frame(tab)$amount, x)
 
   path <- withr::local_tempfile(fileext = ".parquet")
   arrow::write_parquet(tab, path)
-  back <- arrow::read_parquet(path, as_data_frame = FALSE)
+  expect_identical(arrow::read_parquet(path)$amount, x)
 
+  back <- arrow::read_parquet(path, as_data_frame = FALSE)
   expect_identical(
-    back$schema$GetFieldByName("amount")$type$ToString(),
+    back$schema$GetFieldByName("amount")$type$storage_type()$ToString(),
     "decimal128(22, 2)"
   )
   expect_identical(as_decimal(back$amount), x)
 })
 
-test_that("arrow_as_data_frame() keeps decimal columns exact", {
+test_that("a decimal column round-trips through a dataset", {
+  skip_if_not_installed("arrow")
+  # arrow::write_dataset() builds its plan with dplyr.
+  skip_if_not_installed("dplyr")
+
+  x <- decimal(c("100.05", "99999999999999999999.99", NA))
+  df <- data.frame(id = 1:3)
+  df$amount <- x
+
+  dir <- withr::local_tempdir()
+  arrow::write_dataset(df, dir)
+  scanned <- arrow::Scanner$create(arrow::open_dataset(dir))$ToTable()
+  expect_identical(as.data.frame(scanned)$amount, x)
+})
+
+test_that("a reader without the extension registered sees the plain decimal", {
+  skip_if_not_installed("arrow")
+
+  path <- withr::local_tempfile(fileext = ".parquet")
+  arrow::write_parquet(arrow::arrow_table(amount = decimal("100.05")), path)
+
+  arrow::unregister_extension_type("r.decimal")
+  withr::defer(decimal:::decimal_register_arrow_extension())
+
+  back <- arrow::read_parquet(path, as_data_frame = FALSE)
+  expect_identical(
+    back$schema$GetFieldByName("amount")$type$ToString(),
+    "decimal128(5, 2)"
+  )
+  expect_type(arrow::read_parquet(path)$amount, "double")
+})
+
+# Tables --------------------------------------------------------------------
+
+test_that("arrow_as_data_frame() reads plain fields exactly, the rest via arrow", {
   skip_if_not_installed("arrow")
 
   tab <- arrow::arrow_table(
     id = 1:2,
-    label = c("a", "b"),
+    label = factor(c("a", "b")),
+    when = as.POSIXct(
+      c("2020-01-01 12:00:00", "2020-06-01 12:00:00"),
+      tz = "America/New_York"
+    ),
     amount = arrow_decimal(c("100.05", "0.01"), 25L, 2L)
   )
   out <- arrow_as_data_frame(tab)
 
   expect_s3_class(out, "data.frame")
-  expect_identical(names(out), c("id", "label", "amount"))
+  expect_identical(names(out), c("id", "label", "when", "amount"))
   expect_identical(out$id, 1:2)
-  expect_identical(out$label, c("a", "b"))
+  expect_identical(out$label, factor(c("a", "b")))
+  expect_identical(attr(out$when, "tzone"), "America/New_York")
   expect_identical(out$amount, decimal(c("100.05", "0.01")))
   # What arrow's own conversion does with the same column.
   expect_type(as.data.frame(tab)$amount, "double")
   expect_equal(as.data.frame(tab)$amount, c(100.05, 0.01))
 })
 
-test_that("arrow_as_data_frame() ignores arrow's restored R attributes", {
+test_that("arrow_as_data_frame() passes extension columns through and rebuilds plain ones", {
   skip_if_not_installed("arrow")
 
-  # A table built from an R decimal column carries that column's `scale` and
-  # `class` attributes in the schema's R metadata. Arrow reapplies them to the
-  # double it produces, so `as.data.frame()` returns a double wearing the
-  # decimal class. `arrow_as_data_frame()` rebuilds the column from the Arrow
-  # data instead and is unaffected.
-  tab <- arrow::arrow_table(amount = decimal(c("100.05", "0.01")))
+  x <- decimal(c("100.05", "0.01"))
+  expect_identical(
+    arrow_as_data_frame(arrow::arrow_table(amount = x))$amount,
+    x
+  )
 
-  restored <- as.data.frame(tab)$amount
-  expect_type(restored, "double")
+  withr::local_options(decimal.arrow_extension = FALSE)
+  plain <- arrow::arrow_table(amount = x)
+  expect_identical(
+    plain$schema$GetFieldByName("amount")$type$ToString(),
+    "decimal128(5, 2)"
+  )
+  expect_identical(arrow_as_data_frame(plain)$amount, x)
 
-  out <- arrow_as_data_frame(tab)$amount
-  expect_type(vctrs::vec_data(out), "character")
-  expect_identical(out, decimal(c("100.05", "0.01")))
+  # arrow reapplies the column's recorded attributes to the double it made.
+  broken <- as.data.frame(plain)$amount
+  expect_type(broken, "double")
+  expect_error(format(broken), "holds doubles")
 })
 
 test_that("arrow_as_data_frame() works on a RecordBatch and rejects other input", {

@@ -1,11 +1,12 @@
 # Arrow Integration Plan
 
-**Status:** Items 1 to 3 implemented in `R/arrow.R` (drafted and implemented
-2026-09-22); item 4 remains deferred. Arrow integration is now in the
-committed 0.2.0 scope in [release-0.2.0-plan.md](release-0.2.0-plan.md), and
-[roadmap.md](roadmap.md) lists it under 0.2.0 rather than later themes. The
-trust decision is recorded in
-[ADR 005](decisions/005-arrow-string-cast-canonical.md).
+**Status:** Items 1 to 3 implemented in `R/arrow.R` (2026-09-22); item 4
+remains deferred. Arrow integration is in the committed 0.2.0 scope in
+[release-0.2.0-plan.md](release-0.2.0-plan.md), and [roadmap.md](roadmap.md)
+lists it under 0.2.0 rather than later themes. The trust decision is recorded
+in [ADR 005](decisions/005-arrow-string-cast-canonical.md) and the choice of
+an extension type over decimal storage, made after review, in
+[ADR 006](decisions/006-arrow-extension-type.md).
 
 ## Objective
 
@@ -113,15 +114,17 @@ each decimal field through item 1, leaves every other column to arrow's own
 one schema cast: the total work is the same, and reusing the exported
 `as_decimal()` path keeps one implementation of the canonical-form assumption.
 
-A wrinkle found during implementation, now documented in the vignette and
-`NEWS.md`: arrow records an R column's attributes in the schema's R metadata
-and reapplies them blindly on the way back
-(`arrow:::apply_arrow_r_metadata()`, whose exemption list is hard-coded with
-no hook). A table built from a `decimal` column therefore comes back from
-`as.data.frame()` as a double wearing the `decimal` class, which is not a
-valid decimal vector. It survives into Parquet, since the metadata is written
-with the file. `arrow_as_data_frame()` rebuilds from the Arrow data and is
-unaffected; `tab$replace_schema_metadata(NULL)` also avoids it.
+Review found that a plain decimal field regresses the base case: arrow
+records an R column's attributes in the schema's R metadata and reapplies them
+blindly on the way back (`arrow:::apply_arrow_r_metadata()`, whose exemption
+list is hard-coded with no hook), so a table written from a `decimal` column
+came back from `as.data.frame()`, `read_parquet()` and `collect()` as a double
+wearing the `decimal` class, printing rounded values with no error. The
+resolution, an extension type whose storage is the real decimal, is
+[ADR 006](decisions/006-arrow-extension-type.md). Plain fields remain
+available through `type` and `options(decimal.arrow_extension = FALSE)` for
+arrow-side compute, `arrow_as_data_frame()` reads them exactly, and
+`format()` now refuses a double-backed decimal object.
 
 ### 4. Deferred: native import through nanoarrow
 

@@ -14,12 +14,12 @@ plain notation when the scale is non-negative and the adjusted exponent is at
 least -6, and scientific notation otherwise.
 
 Re-parsing those strings through `decimal()` is correct but wasteful. For
-1,000,000 `decimal128(20, 2)` values, the trusted path takes 0.20s against
-1.44s for casting to string and calling `decimal()`, almost all of the
-difference being `decimal_c_canonicalize_strings()` validating text that is
-already canonical. At 0.20s the exact path costs what the lossy `as.vector()`
-conversion to double costs (0.21s), so exactness is no longer a performance
-decision.
+1,000,000 `decimal128(20, 2)` values, with every string materialized (arrow
+returns strings as ALTREP vectors, so a call can return before any string
+exists in R), the trusted path takes 0.27s against 0.78s for
+casting to string and calling `decimal()`, almost all of the difference being
+`decimal_c_canonicalize_strings()` validating text that is already canonical.
+The lossy `as.vector()` conversion to double takes 0.07s.
 
 A property comparison over roughly 5,200 random values, eleven scales from -5
 to 70, both `decimal128` and `decimal256`, including negatives, zeros, and
@@ -48,8 +48,9 @@ specification and is already covered by the property test.
 
 ## Consequences
 
-Arrow decimal columns of any width convert in time comparable to the lossy
-`double` path. Nothing native is involved, so the native check gates do not
+Arrow decimal columns of any width convert in about a third of the time a
+re-parse would take, with the remainder being Arrow's own cast and the
+materialization of the strings in R. Nothing native is involved, so the native check gates do not
 apply to this path.
 
 If a future Arrow release changed its formatting, the property test would fail
