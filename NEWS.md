@@ -82,6 +82,16 @@
   that would change how a number is written, such as `nsmall`, `scientific`
   and `big.mark`, are an error.
 
+- Fixed `rbind()` on data frames with `decimal` columns, which always failed
+  with "Can't assign to elements past the end". Assigning past the end of a
+  `decimal` vector now grows it with missing values, as it does a base vector,
+  and binding columns of different scales takes the finer one.
+
+- `match()`, `%in%` and base `merge()` now compare `decimal` values rather
+  than their stored text, so `2.5` matches `2.50`, as `==` already said.
+  Whole numbers still match integers and strings: `decimal("20") %in% 20L`
+  stays `TRUE`.
+
 # decimal 0.1.0
 
 - Initial version

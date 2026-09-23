@@ -299,6 +299,46 @@ test_that("format() refuses arguments that would change the digits shown", {
   expect_error(format(x, drop0trailing = TRUE), "Can't apply `drop0trailing`")
 })
 
+test_that("base rbind() binds data frames with decimal columns", {
+  a <- data.frame(id = 1L, amount = decimal("1.5"))
+  b <- data.frame(id = 2:3, amount = decimal(c("2.25", NA)))
+
+  # `rbind.data.frame()` grows each column by assigning past its end.
+  out <- rbind(a, b)
+  expect_identical(out$amount, decimal(c("1.50", "2.25", NA)))
+  expect_identical(rbind(b, a)$amount, decimal(c("2.25", NA, "1.50")))
+})
+
+test_that("assigning past the end grows a decimal vector with missing values", {
+  x <- decimal(c("1.5", "2.5"))
+  x[4] <- decimal("3.25")
+
+  expect_identical(x, decimal(c("1.50", "2.50", NA, "3.25")))
+})
+
+test_that("match() and %in% compare values, not their scales", {
+  x <- decimal(c("2.5", "20", "0", NA))
+  table <- decimal(c("20.00", "2.50", "-0.00", NA))
+
+  expect_identical(match(x, table), c(2L, 1L, 3L, 4L))
+  expect_identical(decimal("2.5") %in% decimal("1.25"), FALSE)
+
+  # Whole numbers still match integers and plain strings.
+  expect_identical(
+    decimal(c("20", "20.00", "7")) %in% c(10L, 20L),
+    c(TRUE, TRUE, FALSE)
+  )
+  expect_identical(
+    decimal(c("2.50", "300")) %in% c("2.5", "300"),
+    c(TRUE, TRUE)
+  )
+
+  # A merge on a decimal key matches across scales.
+  left <- data.frame(amount = decimal("2.5"), v = 1L)
+  right <- data.frame(amount = decimal(c("1.25", "2.50")), w = 1:2)
+  expect_identical(merge(left, right)$w, 2L)
+})
+
 test_that("decimal columns print in a knitr table", {
   skip_if_not_installed("knitr")
 

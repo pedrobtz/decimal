@@ -762,7 +762,45 @@ vec_cast.default.decimal <- function(x, to, ..., x_arg = "", to_arg = "") {
   ptype <- vctrs::vec_ptype_common(x, value)
   x <- vctrs::vec_cast(x, ptype)
   value <- vctrs::vec_cast(value, ptype)
+  # A base vector grows when assigned past its end, and `rbind()` on data frames
+  # builds every column that way. `vec_assign()` refuses, so pad with NA first.
+  if (!missing(i) && is.numeric(i)) {
+    end <- max(c(i, 0), na.rm = TRUE)
+    if (end > length(x)) {
+      x <- vctrs::vec_c(x, vctrs::vec_init(x, end - length(x)))
+    }
+  }
   vctrs::vec_assign(x, i, value)
+}
+
+# `match()`, `%in%` and base `merge()` compare what `mtfrm()` returns. The
+# default, `as.character()`, keeps each vector's scale, so 2.5 did not match
+# 2.50 although `==` held. The equality proxy depends on the value alone, so it
+# matches across scales. It writes a whole number that ends in zeros with an
+# exponent, `2e+1`; that is written out in full so 20 still matches `20L` and
+# "20".
+#' @export
+mtfrm.decimal <- function(x) {
+  key <- unname(vctrs::vec_proxy_equal(x))
+  whole <- which(grepl("e+", key, fixed = TRUE))
+  if (length(whole) == 0L) {
+    return(key)
+  }
+
+  exponent <- as.integer(sub("^.*e\\+", "", key[whole]))
+  mantissa <- sub("e.*$", "", key[whole])
+  digits <- sub(".", "", mantissa, fixed = TRUE)
+  sign <- ifelse(startsWith(digits, "-"), "-", "")
+  digits <- sub("^-", "", digits)
+  zeros <- exponent - (nchar(digits) - 1L)
+  # Beyond this the exponent form stays: it is still unique to the value.
+  short <- exponent <= 64L
+  key[whole[short]] <- paste0(
+    sign[short],
+    digits[short],
+    strrep("0", zeros[short])
+  )
+  key
 }
 
 #' @exportS3Method pillar::pillar_shaft
