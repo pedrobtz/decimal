@@ -1,28 +1,26 @@
-## Resubmission
+## Submission
 
-This is a resubmission. In this version I have:
-
-- added return-value documentation for `NA_decimal_`;
-- added a reference for the General Decimal Arithmetic model; and
-- reworded terms flagged by the incoming spell check.
+This is an update from 0.1.0 to 0.1.1. It adds exact conversion to and from
+Arrow decimal arrays (with 'arrow' in Suggests) and a `summary()` method, speeds
+up construction from character, and fixes memory leaks on the error paths of the
+compiled code and malformed logical vectors returned by several predicates.
+`DESCRIPTION` now declares `URL` and `BugReports`.
 
 ## Test environments
 
-- local macOS Tahoe 26.5.2, R 4.6.1
+- local macOS Tahoe 26.6.2 (aarch64), R 4.6.1
+- GitHub Actions: macOS and Windows (R release); Ubuntu (R devel, release and
+  oldrel-1)
+- GitHub Actions, for the compiled code: ASan/UBSan, Valgrind, LTO, gctorture
+  and rchk
 
 ## R CMD check results
 
-0 errors | 0 warnings | 1 note
+0 errors | 0 warnings | 0 notes
 
-```
-* checking CRAN incoming feasibility ... NOTE
-Maintainer: 'Pedro Baltazar <pedrobtz@gmail.com>'
+## Reverse dependencies
 
-New submission
-```
-
-The incoming spell check may flag `Cowlishaw` in the Description field. This is
-the surname of the author of the newly added reference.
+There are no reverse dependencies.
 
 ## Notes on the vendored 'mpdecimal' library
 
