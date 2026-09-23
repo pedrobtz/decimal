@@ -2,6 +2,18 @@ arrow_decimal <- function(values, precision, scale) {
   arrow::Array$create(values)$cast(arrow::decimal128(precision, scale))
 }
 
+# arrow can be built without Parquet or datasets, as it may be on a check
+# machine; installed is not enough.
+skip_if_no_parquet <- function() {
+  skip_if_not_installed("arrow")
+  skip_if_not(arrow::arrow_with_parquet(), "arrow was built without Parquet")
+}
+
+skip_if_no_dataset <- function() {
+  skip_if_no_parquet()
+  skip_if_not(arrow::arrow_with_dataset(), "arrow was built without datasets")
+}
+
 # Arrow to decimal ----------------------------------------------------------
 
 test_that("as_decimal() reads an Arrow decimal128 array exactly", {
@@ -261,6 +273,30 @@ test_that("infer_type() falls back to a single digit for all-missing vectors", {
   )
 })
 
+test_that("infer_type() never infers a precision below the scale", {
+  skip_if_not_installed("arrow")
+
+  # 0.05 needs one digit, but Parquet rejects decimal128(1, 2).
+  expect_identical(
+    arrow::infer_type(decimal(c("0.05", "0.00")))$storage_type()$ToString(),
+    "decimal128(2, 2)"
+  )
+  all_missing <- decimal(NA_character_, scale = 3)
+  expect_identical(
+    arrow::infer_type(all_missing)$storage_type()$ToString(),
+    "decimal128(3, 3)"
+  )
+})
+
+test_that("a column of values below one writes to Parquet", {
+  skip_if_no_parquet()
+
+  x <- decimal(c("0.035", "0.042", NA))
+  path <- withr::local_tempfile(fileext = ".parquet")
+  arrow::write_parquet(arrow::arrow_table(rate = x), path)
+  expect_identical(arrow::read_parquet(path)$rate, x)
+})
+
 test_that("the decimal.arrow_extension option switches to plain fields", {
   skip_if_not_installed("arrow")
   withr::local_options(decimal.arrow_extension = FALSE)
@@ -339,7 +375,7 @@ test_that("arrow_decimal_type() builds the extension type at either width", {
 })
 
 test_that("a decimal column round-trips through tables, Parquet, and datasets", {
-  skip_if_not_installed("arrow")
+  skip_if_no_parquet()
 
   x <- decimal(c("100.05", "99999999999999999999.99", NA))
   df <- data.frame(id = 1:3)
@@ -366,7 +402,7 @@ test_that("a decimal column round-trips through tables, Parquet, and datasets", 
 })
 
 test_that("a decimal column round-trips through a dataset", {
-  skip_if_not_installed("arrow")
+  skip_if_no_dataset()
   # arrow::write_dataset() builds its plan with dplyr.
   skip_if_not_installed("dplyr")
 
@@ -381,7 +417,7 @@ test_that("a decimal column round-trips through a dataset", {
 })
 
 test_that("a reader without the extension registered sees the plain decimal", {
-  skip_if_not_installed("arrow")
+  skip_if_no_parquet()
 
   path <- withr::local_tempfile(fileext = ".parquet")
   arrow::write_parquet(arrow::arrow_table(amount = decimal("100.05")), path)

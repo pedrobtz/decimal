@@ -39,11 +39,12 @@ and rchk workflow before release.
 
 ## 4. Confirm CI and CRAN Metadata
 
-GitHub Actions checks R release on Linux, macOS, and Windows, plus R devel and
-old-release on Linux. Confirm the coverage workflow and all relevant native
-checks. Update `cran-comments.md` with the actual test environments and check
-results; remove placeholders before submission. Run win-builder or equivalent
-CRAN preflight checks when preparing a CRAN release.
+GitHub Actions checks R release on Linux, macOS, and Windows, R devel on Linux
+and Windows, and old-release on Linux. Confirm the coverage workflow and all
+relevant native checks. Update `cran-comments.md` with the actual test
+environments and check results; remove placeholders before submission. The
+Windows R-devel job mirrors CRAN's incoming checks, so a separate win-builder
+run is optional.
 
 ## 5. Final Review
 

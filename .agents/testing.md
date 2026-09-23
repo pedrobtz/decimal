@@ -13,6 +13,10 @@ the production concern:
 - `test-mpdecimal-version.R` — startup and vendored-version checks.
 - `test-arrow.R` — Arrow conversion in both directions, guarded by
   `skip_if_not_installed("arrow")`.
+- `test-data-table.R` — decimal columns in a `data.table`, guarded by
+  `skip_if_not_installed("data.table")`. Run queries through `dt_query()`:
+  the package namespace does not import data.table, so a bare `dt[...]` in a
+  test silently gets data-frame semantics.
 
 Name new files `test-<module>.R` and use focused
 `test_that("<observable behavior>", ...)` blocks. Put regressions beside the

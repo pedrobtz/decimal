@@ -2,7 +2,7 @@
 % Please edit documentation in R/decimal.R
 \name{summary.decimal}
 \alias{summary.decimal}
-\title{Summarise a decimal vector}
+\title{Summarize a decimal vector}
 \usage{
 \method{summary}{decimal}(object, ..., maxsum = 100L, digits = NULL)
 }
@@ -13,7 +13,7 @@
 
 \item{maxsum, digits}{Accepted for compatibility with \code{\link[=summary.data.frame]{summary.data.frame()}},
 which passes them to every column, and ignored. \code{digits} in particular is
-not honoured: rounding an exact decimal for display is the surprise this
+not honored: rounding an exact decimal for display is the surprise this
 package exists to avoid.}
 }
 \value{
@@ -44,7 +44,7 @@ than a measured value. Interpolating a quartile can need more digits than the
 input carries, which widens that shared scale.
 
 Interpolating between \code{-Infinity} and \code{Infinity} is an invalid operation, and
-the default context traps it, so summarising a vector that spans both signed
+the default context traps it, so summarizing a vector that spans both signed
 infinities raises an error rather than returning \code{NaN} quartiles. That is the
 same error \code{decimal("Infinity") - decimal("Infinity")} raises. Clear the trap
 with \code{\link[=with_decimal_context]{with_decimal_context()}} to get base R's \code{NaN} instead.

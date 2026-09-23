@@ -47,7 +47,9 @@
 #' [arrow_as_data_frame()].
 #'
 #' Infinities and NaNs have no Arrow decimal representation and raise an error
-#' on conversion to Arrow.
+#' on conversion to Arrow. Arrow accepts a negative scale but Parquet does not,
+#' so rescale such a vector with `as_decimal(x, scale = 0)` before
+#' `arrow::write_parquet()`.
 #'
 #' @section Options:
 #' `decimal.arrow_extension`: `TRUE` (the default) writes the extension type;
@@ -242,12 +244,14 @@ decimal_arrow_check_representable <- function(x) {
   invisible(x)
 }
 
+# The digits the widest value needs, but never fewer than the scale: Arrow
+# accepts `decimal128(1, 2)` for 0.05, while Parquet rejects any decimal whose
+# scale exceeds its precision.
 decimal_arrow_precision <- function(x) {
+  scale <- decimal_scale(x)
   adj <- adjusted(x)
-  if (all(is.na(adj))) {
-    return(1L)
-  }
-  max(max(adj, na.rm = TRUE) + 1L + decimal_scale(x), 1L)
+  digits <- if (all(is.na(adj))) 1L else max(adj, na.rm = TRUE) + 1L + scale
+  max(digits, scale, 1L)
 }
 
 # The plain Arrow decimal type that holds every value of `x`.

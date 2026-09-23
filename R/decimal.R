@@ -590,16 +590,37 @@ decimal_check_storage <- function(x) {
   ))
 }
 
-# `digits`, `na.encode` and `justify` are accepted and ignored: base's
-# `format.data.frame()` injects them into `...` for every column, so rejecting
-# them would make a decimal column impossible to print in a data frame. They
-# are deliberately not honoured -- rounding the display of an exact decimal is
-# the surprise this package exists to avoid. Anything else in `...` is still an
-# error, so `format(x, scientific = TRUE)` fails loudly rather than pretending.
+# The arguments of base `format()` that change how a number is written. They
+# are refused, so `format(x, scientific = TRUE)` fails loudly rather than
+# pretending.
+decimal_format_refused_args <- c(
+  "nsmall",
+  "scientific",
+  "big.mark",
+  "big.interval",
+  "small.mark",
+  "small.interval",
+  "decimal.mark",
+  "zero.print",
+  "drop0trailing"
+)
+
+# Table printers pass their own arguments to `format()` for every column:
+# `format.data.frame()` passes `digits`, `na.encode` and `justify`, data.table
+# adds `timezone`, and `knitr::kable()` passes `trim`. Rejecting them would make
+# a decimal column impossible to print, so everything else in `...` is accepted
+# and ignored. `digits` is deliberately not honored -- rounding the display of
+# an exact decimal is the surprise this package exists to avoid.
 #' @export
-format.decimal <- function(x, ..., engineering = FALSE,
-                           digits = NULL, na.encode = TRUE, justify = NULL) {
-  rlang::check_dots_empty()
+format.decimal <- function(x, ..., engineering = FALSE) {
+  refused <- intersect(...names(), decimal_format_refused_args)
+  if (length(refused) > 0L) {
+    rlang::abort(c(
+      paste0("Can't apply `", refused[[1L]], "` to a decimal vector."),
+      i = "Decimal vectors are always formatted exactly as stored.",
+      i = "To change the digits, use `round()` or `quantize()` first."
+    ))
+  }
   decimal_check_storage(x)
   engineering <- decimal_scalar_flag(engineering, "engineering")
   values <- vctrs::vec_data(x)
@@ -738,10 +759,52 @@ vec_cast.default.decimal <- function(x, to, ..., x_arg = "", to_arg = "") {
 
 #' @export
 `[<-.decimal` <- function(x, i, value) {
+  # `x[] <- value` assigns to every element.
+  if (missing(i)) {
+    i <- seq_along(x)
+  }
   ptype <- vctrs::vec_ptype_common(x, value)
   x <- vctrs::vec_cast(x, ptype)
   value <- vctrs::vec_cast(value, ptype)
+  # A base vector grows when assigned past its end, and `rbind()` on data frames
+  # builds every column that way. `vec_assign()` refuses, so pad with NA first.
+  if (is.numeric(i)) {
+    end <- max(c(i, 0), na.rm = TRUE)
+    if (end > length(x)) {
+      x <- vctrs::vec_c(x, vctrs::vec_init(x, end - length(x)))
+    }
+  }
   vctrs::vec_assign(x, i, value)
+}
+
+# `match()`, `%in%` and base `merge()` compare what `mtfrm()` returns. The
+# default, `as.character()`, keeps each vector's scale, so 2.5 did not match
+# 2.50 although `==` held. The equality proxy depends on the value alone, so it
+# matches across scales. It writes a whole number that ends in zeros with an
+# exponent, `2e+1`; that is written out in full so 20 still matches `20L` and
+# "20".
+#' @export
+mtfrm.decimal <- function(x) {
+  key <- unname(vctrs::vec_proxy_equal(x))
+  whole <- which(grepl("e+", key, fixed = TRUE))
+  if (length(whole) == 0L) {
+    return(key)
+  }
+
+  exponent <- as.integer(sub("^.*e\\+", "", key[whole]))
+  mantissa <- sub("e.*$", "", key[whole])
+  digits <- sub(".", "", mantissa, fixed = TRUE)
+  sign <- ifelse(startsWith(digits, "-"), "-", "")
+  digits <- sub("^-", "", digits)
+  zeros <- exponent - (nchar(digits) - 1L)
+  # Beyond this the exponent form stays: it is still unique to the value.
+  short <- exponent <= 64L
+  key[whole[short]] <- paste0(
+    sign[short],
+    digits[short],
+    strrep("0", zeros[short])
+  )
+  key
 }
 
 #' @exportS3Method pillar::pillar_shaft
@@ -988,7 +1051,7 @@ decimal_quantile_type7 <- function(sorted, probs) {
   do.call(vctrs::vec_c, out)
 }
 
-#' Summarise a decimal vector
+#' Summarize a decimal vector
 #'
 #' The six-number summary that [summary()] gives for a numeric vector, computed
 #' in exact decimal arithmetic and returned as a `decimal` vector rather than a
@@ -1011,7 +1074,7 @@ decimal_quantile_type7 <- function(sorted, probs) {
 #' input carries, which widens that shared scale.
 #'
 #' Interpolating between `-Infinity` and `Infinity` is an invalid operation, and
-#' the default context traps it, so summarising a vector that spans both signed
+#' the default context traps it, so summarizing a vector that spans both signed
 #' infinities raises an error rather than returning `NaN` quartiles. That is the
 #' same error `decimal("Infinity") - decimal("Infinity")` raises. Clear the trap
 #' with [with_decimal_context()] to get base R's `NaN` instead.
@@ -1020,7 +1083,7 @@ decimal_quantile_type7 <- function(sorted, probs) {
 #' @param ... These dots must be empty.
 #' @param maxsum,digits Accepted for compatibility with [summary.data.frame()],
 #'   which passes them to every column, and ignored. `digits` in particular is
-#'   not honoured: rounding an exact decimal for display is the surprise this
+#'   not honored: rounding an exact decimal for display is the surprise this
 #'   package exists to avoid.
 #' @return A named `decimal` vector holding `Min.`, `1st Qu.`, `Median`,
 #'   `Mean`, `3rd Qu.` and `Max.`, followed by `NA's` when the input contains

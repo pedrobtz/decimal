@@ -12,6 +12,8 @@ knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
 has_arrow <- requireNamespace("arrow", quietly = TRUE) &&
   requireNamespace("tibble", quietly = TRUE)
 knitr::opts_chunk$set(eval = has_arrow)
+# arrow can be built without Parquet support.
+has_parquet <- has_arrow && arrow::arrow_with_parquet()
 ```
 
 ```{r, echo = FALSE, eval = !has_arrow, comment = NA}
@@ -222,7 +224,7 @@ easy to confirm the decimal survived the crossing.
 Parquet preserves the Arrow type, so a file written with a decimal column reads
 back as one, whether you take the data frame or the table:
 
-```{r}
+```{r, eval = has_parquet}
 path <- tempfile(fileext = ".parquet")
 arrow::write_parquet(tab, path)
 arrow::read_parquet(path)$amount
@@ -232,7 +234,7 @@ t2$schema$GetFieldByName("amount")$type$ToString()
 as_decimal(t2$amount)
 ```
 
-```{r, include = FALSE}
+```{r, include = FALSE, eval = has_parquet}
 unlink(path)
 ```
 
@@ -265,7 +267,8 @@ names(foreign)[grepl("^decimal", types)]
 ## Where the two type systems differ
 
 Arrow's decimals are fixed-width integers with a scale, which makes them
-narrower than a `decimal` vector in two ways worth planning around.
+narrower than a `decimal` vector in two ways worth planning around. Parquet
+adds a third.
 
 **Infinity and NaN have no Arrow decimal.** A `decimal` vector holds them
 happily; the conversion reports which element it cannot represent rather than
@@ -302,4 +305,15 @@ they're exact:
 
 ```{r}
 as_decimal(arrow::as_arrow_array(big))
+```
+
+**Parquet needs a scale of zero or more.** Arrow's decimal types accept a
+negative scale, so a vector like `decimal::decimal("12300", scale = -2)`
+converts to `decimal128(3, -2)` in memory, but Parquet's decimal type does not,
+and `arrow::write_parquet()` refuses the column. Set the scale to zero before
+writing:
+
+```{r}
+tens <- decimal::decimal(c("12300", "4500"), scale = -2)
+arrow::infer_type(as_decimal(tens, scale = 0))
 ```
