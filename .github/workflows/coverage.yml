@@ -1,8 +1,6 @@
 on:
   push:
     branches: [main, master]
-    paths-ignore:
-      - ".github/badges/coverage.svg"
   pull_request:
 
 name: coverage
@@ -12,3 +10,8 @@ jobs:
     uses: pedrobtz/r-actions/.github/workflows/coverage.yml@v1
     permissions:
       contents: write
+    # main takes changes only through pull requests, so the badge commit goes
+    # to gh-pages, which pkgdown already deploys to without force-pushing.
+    with:
+      badge-branch: gh-pages
+      badge-path: badges/coverage.svg
