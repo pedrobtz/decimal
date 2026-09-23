@@ -9,8 +9,8 @@ compiled code and malformed logical vectors returned by several predicates.
 ## Test environments
 
 - local macOS Tahoe 26.6.2 (aarch64), R 4.6.1
-- GitHub Actions: macOS and Windows (R release); Ubuntu (R devel, release and
-  oldrel-1)
+- GitHub Actions: macOS (R release); Windows (R devel and release); Ubuntu
+  (R devel, release and oldrel-1)
 - GitHub Actions, for the compiled code: ASan/UBSan, Valgrind, LTO, gctorture
   and rchk
 
