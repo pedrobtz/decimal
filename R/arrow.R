@@ -47,7 +47,9 @@
 #' [arrow_as_data_frame()].
 #'
 #' Infinities and NaNs have no Arrow decimal representation and raise an error
-#' on conversion to Arrow.
+#' on conversion to Arrow. Arrow accepts a negative scale but Parquet does not,
+#' so rescale such a vector with `as_decimal(x, scale = 0)` before
+#' `arrow::write_parquet()`.
 #'
 #' @section Options:
 #' `decimal.arrow_extension`: `TRUE` (the default) writes the extension type;
