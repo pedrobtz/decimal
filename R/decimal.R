@@ -988,7 +988,7 @@ decimal_quantile_type7 <- function(sorted, probs) {
   do.call(vctrs::vec_c, out)
 }
 
-#' Summarise a decimal vector
+#' Summarize a decimal vector
 #'
 #' The six-number summary that [summary()] gives for a numeric vector, computed
 #' in exact decimal arithmetic and returned as a `decimal` vector rather than a
@@ -1011,7 +1011,7 @@ decimal_quantile_type7 <- function(sorted, probs) {
 #' input carries, which widens that shared scale.
 #'
 #' Interpolating between `-Infinity` and `Infinity` is an invalid operation, and
-#' the default context traps it, so summarising a vector that spans both signed
+#' the default context traps it, so summarizing a vector that spans both signed
 #' infinities raises an error rather than returning `NaN` quartiles. That is the
 #' same error `decimal("Infinity") - decimal("Infinity")` raises. Clear the trap
 #' with [with_decimal_context()] to get base R's `NaN` instead.
@@ -1020,7 +1020,7 @@ decimal_quantile_type7 <- function(sorted, probs) {
 #' @param ... These dots must be empty.
 #' @param maxsum,digits Accepted for compatibility with [summary.data.frame()],
 #'   which passes them to every column, and ignored. `digits` in particular is
-#'   not honoured: rounding an exact decimal for display is the surprise this
+#'   not honored: rounding an exact decimal for display is the surprise this
 #'   package exists to avoid.
 #' @return A named `decimal` vector holding `Min.`, `1st Qu.`, `Median`,
 #'   `Mean`, `3rd Qu.` and `Max.`, followed by `NA's` when the input contains
