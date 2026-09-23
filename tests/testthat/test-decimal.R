@@ -130,9 +130,9 @@ test_that("decimal formatting and reverse coercions behave as specified", {
   x <- decimal(c("1.2300", "-0", "NaN", NA_character_))
 
   expect_identical(format(x), c("1.2300", "-0.0000", "NaN", NA_character_))
-  expect_error(format(x, scientific = TRUE), "`...` must be empty")
+  expect_error(format(x, scientific = TRUE), "Can't apply `scientific`")
   # `format.data.frame()` injects these into `...` for every column; they are
-  # tolerated so a decimal column can be printed, but never honoured.
+  # tolerated so a decimal column can be printed, but never honored.
   expect_identical(format(x, digits = 2), format(x))
   expect_identical(format(x, na.encode = FALSE), format(x))
   expect_identical(format(x, justify = "left"), format(x))
@@ -277,6 +277,35 @@ test_that("decimal columns print inside a base data frame", {
   expect_no_error(capture.output(print(df)))
   # `format.data.frame()` wraps each formatted column in `AsIs`.
   expect_identical(as.character(format(df)$amount), c("1.25", "2.50", NA))
+})
+
+test_that("format() ignores the arguments other table printers pass", {
+  x <- decimal(c("1.25", NA))
+
+  # data.table passes `timezone`; knitr::kable() passes `trim`.
+  expect_identical(
+    format(x, na.encode = FALSE, timezone = FALSE, justify = "none"),
+    format(x)
+  )
+  expect_identical(format(x, trim = TRUE), format(x))
+  expect_identical(format(x, width = 12), format(x))
+})
+
+test_that("format() refuses arguments that would change the digits shown", {
+  x <- decimal("1234.5")
+
+  expect_error(format(x, nsmall = 2), "Can't apply `nsmall`")
+  expect_error(format(x, big.mark = ","), "Can't apply `big.mark`")
+  expect_error(format(x, drop0trailing = TRUE), "Can't apply `drop0trailing`")
+})
+
+test_that("decimal columns print in a knitr table", {
+  skip_if_not_installed("knitr")
+
+  df <- data.frame(amount = decimal(c("1.25", "10.50")))
+  out <- as.character(knitr::kable(df))
+
+  expect_true(any(grepl("10.50", out, fixed = TRUE)))
 })
 
 test_that("a decimal object that holds doubles is refused rather than printed", {

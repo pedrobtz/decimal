@@ -73,12 +73,14 @@
   in both directions, including chunked arrays, Parquet columns, and the cases
   Arrow decimals cannot represent.
 
-- `format()` on a `decimal` vector no longer errors when it is given the
-  `digits`, `na.encode` and `justify` arguments that `format.data.frame()`
-  passes to every column. Decimal columns can now be printed inside a base
-  `data.frame`. The arguments are tolerated rather than honored, so an exact
-  value is never silently rounded for display, and any other unused argument
-  is still an error.
+- `format()` on a `decimal` vector now accepts the extra arguments that table
+  printers pass to every column, such as `digits`, `na.encode` and `justify`
+  from `format.data.frame()`, `timezone` from 'data.table' and `trim` from
+  `knitr::kable()`, so decimal columns print inside a base `data.frame`, a
+  `data.table` and a `kable()` table. The arguments are ignored rather than
+  honored, so an exact value is never silently rounded for display. Arguments
+  that would change how a number is written, such as `nsmall`, `scientific`
+  and `big.mark`, are an error.
 
 # decimal 0.1.0
 

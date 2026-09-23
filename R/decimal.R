@@ -590,16 +590,37 @@ decimal_check_storage <- function(x) {
   ))
 }
 
-# `digits`, `na.encode` and `justify` are accepted and ignored: base's
-# `format.data.frame()` injects them into `...` for every column, so rejecting
-# them would make a decimal column impossible to print in a data frame. They
-# are deliberately not honoured -- rounding the display of an exact decimal is
-# the surprise this package exists to avoid. Anything else in `...` is still an
-# error, so `format(x, scientific = TRUE)` fails loudly rather than pretending.
+# The arguments of base `format()` that change how a number is written. They
+# are refused, so `format(x, scientific = TRUE)` fails loudly rather than
+# pretending.
+decimal_format_refused_args <- c(
+  "nsmall",
+  "scientific",
+  "big.mark",
+  "big.interval",
+  "small.mark",
+  "small.interval",
+  "decimal.mark",
+  "zero.print",
+  "drop0trailing"
+)
+
+# Table printers pass their own arguments to `format()` for every column:
+# `format.data.frame()` passes `digits`, `na.encode` and `justify`, data.table
+# adds `timezone`, and `knitr::kable()` passes `trim`. Rejecting them would make
+# a decimal column impossible to print, so everything else in `...` is accepted
+# and ignored. `digits` is deliberately not honored -- rounding the display of
+# an exact decimal is the surprise this package exists to avoid.
 #' @export
-format.decimal <- function(x, ..., engineering = FALSE,
-                           digits = NULL, na.encode = TRUE, justify = NULL) {
-  rlang::check_dots_empty()
+format.decimal <- function(x, ..., engineering = FALSE) {
+  refused <- intersect(...names(), decimal_format_refused_args)
+  if (length(refused) > 0L) {
+    rlang::abort(c(
+      paste0("Can't apply `", refused[[1L]], "` to a decimal vector."),
+      i = "Decimal vectors are always formatted exactly as stored.",
+      i = "To change the digits, use `round()` or `quantize()` first."
+    ))
+  }
   decimal_check_storage(x)
   engineering <- decimal_scalar_flag(engineering, "engineering")
   values <- vctrs::vec_data(x)
