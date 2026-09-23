@@ -12,6 +12,8 @@ knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
 has_arrow <- requireNamespace("arrow", quietly = TRUE) &&
   requireNamespace("tibble", quietly = TRUE)
 knitr::opts_chunk$set(eval = has_arrow)
+# arrow can be built without Parquet support.
+has_parquet <- has_arrow && arrow::arrow_with_parquet()
 ```
 
 ```{r, echo = FALSE, eval = !has_arrow, comment = NA}
@@ -222,7 +224,7 @@ easy to confirm the decimal survived the crossing.
 Parquet preserves the Arrow type, so a file written with a decimal column reads
 back as one, whether you take the data frame or the table:
 
-```{r}
+```{r, eval = has_parquet}
 path <- tempfile(fileext = ".parquet")
 arrow::write_parquet(tab, path)
 arrow::read_parquet(path)$amount
@@ -232,7 +234,7 @@ t2$schema$GetFieldByName("amount")$type$ToString()
 as_decimal(t2$amount)
 ```
 
-```{r, include = FALSE}
+```{r, include = FALSE, eval = has_parquet}
 unlink(path)
 ```
 
