@@ -242,12 +242,14 @@ decimal_arrow_check_representable <- function(x) {
   invisible(x)
 }
 
+# The digits the widest value needs, but never fewer than the scale: Arrow
+# accepts `decimal128(1, 2)` for 0.05, while Parquet rejects any decimal whose
+# scale exceeds its precision.
 decimal_arrow_precision <- function(x) {
+  scale <- decimal_scale(x)
   adj <- adjusted(x)
-  if (all(is.na(adj))) {
-    return(1L)
-  }
-  max(max(adj, na.rm = TRUE) + 1L + decimal_scale(x), 1L)
+  digits <- if (all(is.na(adj))) 1L else max(adj, na.rm = TRUE) + 1L + scale
+  max(digits, scale, 1L)
 }
 
 # The plain Arrow decimal type that holds every value of `x`.

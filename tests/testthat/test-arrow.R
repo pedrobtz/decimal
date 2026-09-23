@@ -273,6 +273,30 @@ test_that("infer_type() falls back to a single digit for all-missing vectors", {
   )
 })
 
+test_that("infer_type() never infers a precision below the scale", {
+  skip_if_not_installed("arrow")
+
+  # 0.05 needs one digit, but Parquet rejects decimal128(1, 2).
+  expect_identical(
+    arrow::infer_type(decimal(c("0.05", "0.00")))$storage_type()$ToString(),
+    "decimal128(2, 2)"
+  )
+  all_missing <- decimal(NA_character_, scale = 3)
+  expect_identical(
+    arrow::infer_type(all_missing)$storage_type()$ToString(),
+    "decimal128(3, 3)"
+  )
+})
+
+test_that("a column of values below one writes to Parquet", {
+  skip_if_no_parquet()
+
+  x <- decimal(c("0.035", "0.042", NA))
+  path <- withr::local_tempfile(fileext = ".parquet")
+  arrow::write_parquet(arrow::arrow_table(rate = x), path)
+  expect_identical(arrow::read_parquet(path)$rate, x)
+})
+
 test_that("the decimal.arrow_extension option switches to plain fields", {
   skip_if_not_installed("arrow")
   withr::local_options(decimal.arrow_extension = FALSE)
