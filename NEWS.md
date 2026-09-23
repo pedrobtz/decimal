@@ -92,6 +92,11 @@
   Whole numbers still match integers and strings: `decimal("20") %in% 20L`
   stays `TRUE`.
 
+- New section in `vignette("decimal-values")` on decimal columns in a
+  'data.table': what works, and workarounds for the operations data.table runs
+  on the stored text instead of the values, such as sorting and grouped
+  `min()` and `max()`.
+
 # decimal 0.1.0
 
 - Initial version

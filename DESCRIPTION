@@ -37,6 +37,7 @@ Imports:
 Suggests:
     arrow,
     covr,
+    data.table,
     dplyr,
     knitr,
     pillar,
