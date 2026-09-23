@@ -10,10 +10,13 @@
 <url><loc>https://pedrobtz.github.io/decimal/news/index.html</loc></url>
 <url><loc>https://pedrobtz.github.io/decimal/reference/NA_decimal_.html</loc></url>
 <url><loc>https://pedrobtz.github.io/decimal/reference/adjusted.html</loc></url>
+<url><loc>https://pedrobtz.github.io/decimal/reference/arrow_as_data_frame.html</loc></url>
+<url><loc>https://pedrobtz.github.io/decimal/reference/arrow_decimal_type.html</loc></url>
 <url><loc>https://pedrobtz.github.io/decimal/reference/as_decimal.html</loc></url>
 <url><loc>https://pedrobtz.github.io/decimal/reference/clear_decimal_flags.html</loc></url>
 <url><loc>https://pedrobtz.github.io/decimal/reference/decimal-package.html</loc></url>
 <url><loc>https://pedrobtz.github.io/decimal/reference/decimal.html</loc></url>
+<url><loc>https://pedrobtz.github.io/decimal/reference/decimal_arrow.html</loc></url>
 <url><loc>https://pedrobtz.github.io/decimal/reference/decimal_context.html</loc></url>
 <url><loc>https://pedrobtz.github.io/decimal/reference/decimal_flags.html</loc></url>
 <url><loc>https://pedrobtz.github.io/decimal/reference/decimal_from_double.html</loc></url>
@@ -34,6 +37,7 @@
 <url><loc>https://pedrobtz.github.io/decimal/reference/quantize.html</loc></url>
 <url><loc>https://pedrobtz.github.io/decimal/reference/same_quantum.html</loc></url>
 <url><loc>https://pedrobtz.github.io/decimal/reference/set_decimal_context.html</loc></url>
+<url><loc>https://pedrobtz.github.io/decimal/reference/summary.decimal.html</loc></url>
 <url><loc>https://pedrobtz.github.io/decimal/reference/vec_arith.decimal.html</loc></url>
 <url><loc>https://pedrobtz.github.io/decimal/reference/with_decimal_context.html</loc></url>
 </urlset>

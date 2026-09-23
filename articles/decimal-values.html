@@ -20,7 +20,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">decimal</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.1</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Released version">0.1.1</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -198,13 +198,61 @@ double needs a scale decided for it, and a string needs to be parsed
 (which can fail), so neither is a lossless, always-safe promotion the
 way integer is. When you mean it, say it — call <code><a href="../reference/decimal.html">decimal()</a></code>
 or <code><a href="../reference/as_decimal.html">as_decimal()</a></code> explicitly.</p>
+<div class="section level3">
+<h3 id="in-a-data-table">In a data.table<a class="anchor" aria-label="anchor" href="#in-a-data-table"></a>
+</h3>
+<p>A <code>data.table</code> holds and prints decimal columns, and
+whenever it evaluates an ordinary R expression it uses the decimal
+methods: filtering, arithmetic in <code>j</code> or <code>:=</code>, and
+joining or grouping on a decimal key all work. For speed, though, some
+data.table operations skip R’s methods and work on the stored text
+directly, which for a decimal is the wrong thing:</p>
+<ul>
+<li>
+<strong>Sorting.</strong> <code>dt[order(x)]</code>,
+<code>setorder()</code> and <code>setkey()</code> sort the text, so
+<code>10.00</code> comes before <code>2.50</code>. Sort by
+<code>xtfrm(x)</code>, which ranks the values.</li>
+<li>
+<strong>Grouped summaries.</strong> With <code>by</code>, data.table
+swaps <code><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">min()</a></code>, <code><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max()</a></code>, <code><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum()</a></code> and
+<code><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean()</a></code> for its own versions: <code><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">min()</a></code> and
+<code><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max()</a></code> then compare text and pick the wrong element, and
+<code><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum()</a></code> and <code><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean()</a></code> stop with an error. Write
+<code>base::max(x)</code> and so on, or set
+<code>options(datatable.optimize = 1)</code>.</li>
+<li>
+<strong>Mixed scales.</strong> <code>rbindlist()</code>,
+<code>:=</code> on some of the rows, <code>fifelse()</code> and
+<code>melt()</code> combine the text without reconciling scales, so
+<code>1.5</code> and <code>2.25</code> end up in one vector with
+different numbers of decimal places. Joins compare the text too, so
+<code>2.5</code> does not match <code>2.50</code>. Give decimal columns
+one scale first, for example with
+<code>as_decimal(x, scale = 2)</code>.</li>
+</ul>
+<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">dt</span> <span class="op">&lt;-</span> <span class="fu">data.table</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/data.table/man/data.table.html" class="external-link">data.table</a></span><span class="op">(</span>price <span class="op">=</span> <span class="fu"><a href="../reference/decimal.html">decimal</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"10.00"</span>, <span class="st">"9.50"</span>, <span class="st">"-3.00"</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="va">dt</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/order.html" class="external-link">order</a></span><span class="op">(</span><span class="va">price</span><span class="op">)</span><span class="op">]</span></span>
+<span><span class="co">#&gt;        price</span></span>
+<span><span class="co">#&gt;    &lt;decimal&gt;</span></span>
+<span><span class="co">#&gt; 1:     -3.00</span></span>
+<span><span class="co">#&gt; 2:     10.00</span></span>
+<span><span class="co">#&gt; 3:      9.50</span></span>
+<span><span class="va">dt</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/order.html" class="external-link">order</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/xtfrm.html" class="external-link">xtfrm</a></span><span class="op">(</span><span class="va">price</span><span class="op">)</span><span class="op">)</span><span class="op">]</span></span>
+<span><span class="co">#&gt;        price</span></span>
+<span><span class="co">#&gt;    &lt;decimal&gt;</span></span>
+<span><span class="co">#&gt; 1:     -3.00</span></span>
+<span><span class="co">#&gt; 2:      9.50</span></span>
+<span><span class="co">#&gt; 3:     10.00</span></span></code></pre></div>
+</div>
 </div>
 <div class="section level2">
 <h2 id="arithmetic">Arithmetic<a class="anchor" aria-label="anchor" href="#arithmetic"></a>
 </h2>
 <p>Arithmetic is vectorized, context-controlled, and keeps track of
 significance:</p>
-<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/decimal.html">decimal</a></span><span class="op">(</span><span class="st">"1.20"</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="../reference/decimal.html">decimal</a></span><span class="op">(</span><span class="st">"2.3"</span><span class="op">)</span></span>
 <span><span class="co">#&gt; &lt;decimal[1]&gt;</span></span>
 <span><span class="co">#&gt; [1] 3.50</span></span>
@@ -218,7 +266,7 @@ significance:</p>
 <code>%/%</code>. Base R floors integer division toward negative
 infinity, while General Decimal Arithmetic truncates toward zero, so
 results differ for negative operands:</p>
-<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="op">-</span><span class="fl">7</span> <span class="op"><a href="https://rdrr.io/r/base/Arithmetic.html" class="external-link">%%</a></span> <span class="fl">4</span>                        <span class="co"># base R: floored, remainder takes divisor's sign</span></span>
 <span><span class="co">#&gt; [1] 1</span></span>
 <span><span class="fu"><a href="../reference/decimal.html">decimal</a></span><span class="op">(</span><span class="st">"-7"</span><span class="op">)</span> <span class="op"><a href="https://rdrr.io/r/base/Arithmetic.html" class="external-link">%%</a></span> <span class="fu"><a href="../reference/decimal.html">decimal</a></span><span class="op">(</span><span class="st">"4"</span><span class="op">)</span>  <span class="co"># decimal: truncated, remainder takes dividend's sign</span></span>
@@ -237,7 +285,7 @@ results differ for negative operands:</p>
 <p>decimal supports the full menagerie: <code>NA</code>, NaNs,
 infinities, and signed zero — and it keeps R’s missing value distinct
 from decimal’s not-a-number:</p>
-<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">x</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/decimal.html">decimal</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="cn">NA_character_</span>, <span class="st">"NaN"</span>, <span class="st">"sNaN"</span>, <span class="st">"Infinity"</span>, <span class="st">"-0"</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="va">x</span></span>
 <span><span class="co">#&gt; &lt;decimal[5]&gt;</span></span>
@@ -274,33 +322,33 @@ apart from a missing value.</p></li>
 active context’s rounding mode. It’s the operation behind
 <code><a href="https://rdrr.io/r/base/Round.html" class="external-link">round()</a></code> and <code><a href="https://rdrr.io/r/base/Round.html" class="external-link">signif()</a></code>, and it reads naturally
 for the most common case — rounding to cents:</p>
-<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/quantize.html">quantize</a></span><span class="op">(</span><span class="fu"><a href="../reference/decimal.html">decimal</a></span><span class="op">(</span><span class="st">"1.2345"</span><span class="op">)</span>, <span class="fu"><a href="../reference/decimal.html">decimal</a></span><span class="op">(</span><span class="st">"0.01"</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt; &lt;decimal[1]&gt;</span></span>
 <span><span class="co">#&gt; [1] 1.23</span></span></code></pre></div>
 <p><code><a href="../reference/normalize.html">normalize()</a></code> strips shared trailing zeros down to the
 finest scale the vector actually needs, without discarding any element’s
 significance:</p>
-<div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb19"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/normalize.html">normalize</a></span><span class="op">(</span><span class="fu"><a href="../reference/decimal.html">decimal</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"1.2300"</span>, <span class="st">"1.2"</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt; &lt;decimal[2]&gt;</span></span>
 <span><span class="co">#&gt; [1] 1.23 1.20</span></span></code></pre></div>
 <p><code>fma(a, b, c)</code> computes <code>a * b + c</code> as one
 fused operation with a single rounding at the end, instead of rounding
 after the multiplication and again after the addition:</p>
-<div class="sourceCode" id="cb19"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb20"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/fma.html">fma</a></span><span class="op">(</span><span class="fu"><a href="../reference/decimal.html">decimal</a></span><span class="op">(</span><span class="st">"2"</span><span class="op">)</span>, <span class="fu"><a href="../reference/decimal.html">decimal</a></span><span class="op">(</span><span class="st">"3"</span><span class="op">)</span>, <span class="fu"><a href="../reference/decimal.html">decimal</a></span><span class="op">(</span><span class="st">"4"</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt; &lt;decimal[1]&gt;</span></span>
 <span><span class="co">#&gt; [1] 10</span></span></code></pre></div>
 <p><code><a href="../reference/same_quantum.html">same_quantum()</a></code> reports whether two vectors share the
 same declared scale (remember, scale is a per-vector property):</p>
-<div class="sourceCode" id="cb20"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/same_quantum.html">same_quantum</a></span><span class="op">(</span><span class="fu"><a href="../reference/decimal.html">decimal</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"1.20"</span>, <span class="st">"2.0"</span><span class="op">)</span><span class="op">)</span>, <span class="fu"><a href="../reference/decimal.html">decimal</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"2.30"</span>, <span class="st">"3.00"</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] TRUE TRUE</span></span></code></pre></div>
 <p>And <code><a href="../reference/adjusted.html">adjusted()</a></code> returns each value’s adjusted exponent —
 the exponent it would have in scientific notation with a single digit
 before the point:</p>
-<div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb22"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/adjusted.html">adjusted</a></span><span class="op">(</span><span class="fu"><a href="../reference/decimal.html">decimal</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"1.2300"</span>, <span class="st">"1E-3"</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1]  0 -3</span></span></code></pre></div>
 </div>

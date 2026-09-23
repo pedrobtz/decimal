@@ -23,6 +23,8 @@
   multiply-add
 - [`same_quantum()`](https://pedrobtz.github.io/decimal/reference/same_quantum.md)
   : Compare decimal vector scales
+- [`summary(`*`<decimal>`*`)`](https://pedrobtz.github.io/decimal/reference/summary.decimal.md)
+  : Summarize a decimal vector
 - [`adjusted()`](https://pedrobtz.github.io/decimal/reference/adjusted.md)
   : Compute the adjusted exponent
 - [`number_class()`](https://pedrobtz.github.io/decimal/reference/number_class.md)
@@ -42,6 +44,16 @@
   : Identify values with a negative sign
 - [`is_zero()`](https://pedrobtz.github.io/decimal/reference/is_zero.md)
   : Identify decimal zeros
+
+## Arrow interoperability
+
+- [`decimal_arrow`](https://pedrobtz.github.io/decimal/reference/decimal_arrow.md)
+  : Arrow interoperability
+- [`arrow_as_data_frame()`](https://pedrobtz.github.io/decimal/reference/arrow_as_data_frame.md)
+  : Convert an Arrow table to a data frame, keeping decimal columns
+  exact
+- [`arrow_decimal_type()`](https://pedrobtz.github.io/decimal/reference/arrow_decimal_type.md)
+  : Arrow type for a decimal column
 
 ## Contexts and signals
 
