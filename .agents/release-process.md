@@ -50,7 +50,7 @@ run is optional.
 
 - Install and load the built tarball in a clean R library.
 - Verify `mpdecimal_version()` reports `4.0.1`.
-- Read rendered README, reference pages, and both vignettes.
+- Read rendered README, reference pages, and the vignettes.
 - Confirm examples do not depend on undeclared packages or network access.
 - Confirm the Git diff contains no build products (`*.o`, `*.so`, check
   directories, or generated site files).
@@ -59,3 +59,24 @@ run is optional.
 
 Tagging, publishing, and CRAN submission are deliberate maintainer actions;
 they are not implied by completing the checks above.
+
+## 6. Submit and Tag
+
+`main` accepts changes only through pull requests, so merge the release pull
+request first and submit from an up-to-date `main`:
+
+```sh
+git switch main && git pull
+Rscript -e "devtools::submit_cran()"
+```
+
+`submit_cran()` writes `CRAN-SUBMISSION` with the version and the SHA of
+`HEAD`. The file is local state and is ignored by Git; do not commit it.
+Submitting from a feature branch that is later squash-merged records a SHA
+that never reaches `main`.
+
+Once CRAN accepts the package, run `usethis::use_github_release()`. It tags
+the recorded SHA, publishes the `NEWS.md` section as the GitHub release, and
+deletes `CRAN-SUBMISSION`. Then open a pull request from
+`usethis::use_dev_version()` to move to the next development version, which
+also switches the pkgdown site back to `/dev/`.
