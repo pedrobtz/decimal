@@ -759,12 +759,16 @@ vec_cast.default.decimal <- function(x, to, ..., x_arg = "", to_arg = "") {
 
 #' @export
 `[<-.decimal` <- function(x, i, value) {
+  # `x[] <- value` assigns to every element.
+  if (missing(i)) {
+    i <- seq_along(x)
+  }
   ptype <- vctrs::vec_ptype_common(x, value)
   x <- vctrs::vec_cast(x, ptype)
   value <- vctrs::vec_cast(value, ptype)
   # A base vector grows when assigned past its end, and `rbind()` on data frames
   # builds every column that way. `vec_assign()` refuses, so pad with NA first.
-  if (!missing(i) && is.numeric(i)) {
+  if (is.numeric(i)) {
     end <- max(c(i, 0), na.rm = TRUE)
     if (end > length(x)) {
       x <- vctrs::vec_c(x, vctrs::vec_init(x, end - length(x)))

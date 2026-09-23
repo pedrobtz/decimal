@@ -85,7 +85,8 @@
 - Fixed `rbind()` on data frames with `decimal` columns, which always failed
   with "Can't assign to elements past the end". Assigning past the end of a
   `decimal` vector now grows it with missing values, as it does a base vector,
-  and binding columns of different scales takes the finer one.
+  and binding columns of different scales takes the finer one. `x[] <- value`
+  now replaces every element instead of failing.
 
 - `match()`, `%in%` and base `merge()` now compare `decimal` values rather
   than their stored text, so `2.5` matches `2.50`, as `==` already said.

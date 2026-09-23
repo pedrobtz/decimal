@@ -316,6 +316,20 @@ test_that("assigning past the end grows a decimal vector with missing values", {
   expect_identical(x, decimal(c("1.50", "2.50", NA, "3.25")))
 })
 
+test_that("assigning with an empty index replaces every element", {
+  x <- decimal(c("1.5", "2.5", NA))
+  x[] <- decimal("9")
+  expect_identical(x, decimal(c("9.0", "9.0", "9.0")))
+
+  y <- decimal(c("1.25", "2.50"))
+  y[] <- c(3L, 4L)
+  expect_identical(y, decimal(c("3.00", "4.00")))
+
+  empty <- decimal()
+  empty[] <- decimal("1")
+  expect_identical(empty, decimal())
+})
+
 test_that("match() and %in% compare values, not their scales", {
   x <- decimal(c("2.5", "20", "0", NA))
   table <- decimal(c("20.00", "2.50", "-0.00", NA))
