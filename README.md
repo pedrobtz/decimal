@@ -50,8 +50,8 @@ Highlights:
 
 - **Full arithmetic.** `+`, `-`, `*`, `/`, `^`, `%%`, `%/%`,
   comparisons, and math functions like `abs()`, `sqrt()`, `exp()`, and
-  `log()`, plus reductions `sum()`, `prod()`, `min()`, `max()`, and
-  `mean()`.
+  `log()`, plus reductions `sum()`, `prod()`, `min()`, `max()`,
+  `mean()`, and `summary()`.
 
 - **Decimal-aware tools.** `quantize()` to round to a fixed number of
   digits (say, cents), `normalize()`, `fma()`, `same_quantum()`,
@@ -64,12 +64,23 @@ Highlights:
 - **Special values.** `NA`, signed zeros, infinities, and quiet and
   signaling NaNs are supported throughout.
 
+- **Arrow and Parquet.** A decimal column becomes a real Arrow
+  `decimal128()` or `decimal256()` field in `arrow::write_parquet()` and
+  `arrow::arrow_table()`, and comes back as a decimal vector on every
+  read path — see `vignette("arrow-decimal-types")`.
+
 ## Installation
 
 Install the released version from CRAN:
 
 ``` r
 install.packages("decimal")
+```
+
+Or install the development version from GitHub with pak:
+
+``` r
+pak::pak("pedrobtz/decimal")
 ```
 
 ## Usage
@@ -138,6 +149,9 @@ quantize(balance, decimal("0.01"))
 
 - `vignette("contexts-and-signals")` covers the arithmetic context:
   precision, rounding modes, traps, and flags.
+
+- `vignette("arrow-decimal-types")` covers lossless conversion to and
+  from Arrow decimal columns and Parquet files.
 
 - The [General Decimal Arithmetic
   specification](https://speleotrove.com/decimal/decarith.pdf) is the
