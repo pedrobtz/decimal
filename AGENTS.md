@@ -42,9 +42,8 @@ Read the documents relevant to a change before editing:
 
 Keep changes focused and preserve the package invariants described above.
 User-facing behavior requires a test and, when applicable, roxygen
-documentation, `_pkgdown.yml`, and a `NEWS.md` entry. Edit `README.Rmd`, not
-generated `README.md`; edit roxygen source, not generated `man/` files or
-`NAMESPACE`.
+documentation, `_pkgdown.yml`, and a `NEWS.md` entry. Edit roxygen source,
+not generated `man/` files or `NAMESPACE`.
 
 For routine development, run:
 

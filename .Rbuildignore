@@ -17,5 +17,4 @@
 ^pkgdown$
 ^doc$
 ^Meta$
-^README\.Rmd$
 ^CRAN-SUBMISSION$
