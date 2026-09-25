@@ -26,7 +26,9 @@ because arrow reapplies the column's recorded R attributes; the package
 refuses to format such an object. Read those tables with
 arrow_as_data_frame().
 Infinities and NaNs have no Arrow decimal representation and raise an error
-on conversion to Arrow."><meta property="og:description" content="decimal vectors convert to and from Arrow decimal arrays exactly, in both
+on conversion to Arrow. Arrow accepts a negative scale but Parquet does not,
+so rescale such a vector with as_decimal(x, scale = 0) before
+arrow::write_parquet()."><meta property="og:description" content="decimal vectors convert to and from Arrow decimal arrays exactly, in both
 directions, when the arrow package is installed.
 Arrow to decimal. as_decimal() accepts an Arrow Array or
 ChunkedArray. A decimal32(), decimal64(), decimal128() or
@@ -53,7 +55,9 @@ because arrow reapplies the column's recorded R attributes; the package
 refuses to format such an object. Read those tables with
 arrow_as_data_frame().
 Infinities and NaNs have no Arrow decimal representation and raise an error
-on conversion to Arrow."><meta name="robots" content="noindex"></head><body>
+on conversion to Arrow. Arrow accepts a negative scale but Parquet does not,
+so rescale such a vector with as_decimal(x, scale = 0) before
+arrow::write_parquet()."><meta name="robots" content="noindex"></head><body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
 
 
@@ -61,7 +65,7 @@ on conversion to Arrow."><meta name="robots" content="noindex"></head><body>
 
     <a class="navbar-brand me-2" href="../index.html">decimal</a>
 
-    <small class="nav-text text-danger me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="In-development version">0.1.0.9999</small>
+    <small class="nav-text text-danger me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="In-development version">0.1.1.9000</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -121,7 +125,9 @@ because arrow reapplies the column's recorded R attributes; the package
 refuses to format such an object. Read those tables with
 <code><a href="arrow_as_data_frame.html">arrow_as_data_frame()</a></code>.</p>
 <p>Infinities and NaNs have no Arrow decimal representation and raise an error
-on conversion to Arrow.</p>
+on conversion to Arrow. Arrow accepts a negative scale but Parquet does not,
+so rescale such a vector with <code>as_decimal(x, scale = 0)</code> before
+<code><a href="https://arrow.apache.org/docs/r/reference/write_parquet.html" class="external-link">arrow::write_parquet()</a></code>.</p>
     </div>
 
 

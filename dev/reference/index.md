@@ -24,7 +24,7 @@
 - [`same_quantum()`](https://pedrobtz.github.io/decimal/dev/reference/same_quantum.md)
   : Compare decimal vector scales
 - [`summary(`*`<decimal>`*`)`](https://pedrobtz.github.io/decimal/dev/reference/summary.decimal.md)
-  : Summarise a decimal vector
+  : Summarize a decimal vector
 - [`adjusted()`](https://pedrobtz.github.io/decimal/dev/reference/adjusted.md)
   : Compute the adjusted exponent
 - [`number_class()`](https://pedrobtz.github.io/decimal/dev/reference/number_class.md)

@@ -1,4 +1,4 @@
-# Summarise a decimal vector
+# Summarize a decimal vector
 
 The six-number summary that
 [`summary()`](https://rdrr.io/r/base/summary.html) gives for a numeric
@@ -27,7 +27,7 @@ summary(object, ..., maxsum = 100L, digits = NULL)
   Accepted for compatibility with
   [`summary.data.frame()`](https://rdrr.io/r/base/summary.html), which
   passes them to every column, and ignored. `digits` in particular is
-  not honoured: rounding an exact decimal for display is the surprise
+  not honored: rounding an exact decimal for display is the surprise
   this package exists to avoid.
 
 ## Value
@@ -58,7 +58,7 @@ a count rather than a measured value. Interpolating a quartile can need
 more digits than the input carries, which widens that shared scale.
 
 Interpolating between `-Infinity` and `Infinity` is an invalid
-operation, and the default context traps it, so summarising a vector
+operation, and the default context traps it, so summarizing a vector
 that spans both signed infinities raises an error rather than returning
 `NaN` quartiles. That is the same error
 `decimal("Infinity") - decimal("Infinity")` raises. Clear the trap with

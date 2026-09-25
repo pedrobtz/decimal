@@ -343,6 +343,7 @@ names(foreign)[grepl("^decimal", types)]
 
 Arrow’s decimals are fixed-width integers with a scale, which makes them
 narrower than a `decimal` vector in two ways worth planning around.
+Parquet adds a third.
 
 **Infinity and NaN have no Arrow decimal.** A `decimal` vector holds
 them happily; the conversion reports which element it cannot represent
@@ -396,4 +397,19 @@ as_decimal(arrow::as_arrow_array(big))
 #> <decimal[2]>
 #> [1] 12345678901234567890.12345678000000000000
 #> [2] 0.10000000000000000001
+```
+
+**Parquet needs a scale of zero or more.** Arrow’s decimal types accept
+a negative scale, so a vector like
+`decimal::decimal("12300", scale = -2)` converts to `decimal128(3, -2)`
+in memory, but Parquet’s decimal type does not, and
+[`arrow::write_parquet()`](https://arrow.apache.org/docs/r/reference/write_parquet.html)
+refuses the column. Set the scale to zero before writing:
+
+``` r
+
+tens <- decimal::decimal(c("12300", "4500"), scale = -2)
+arrow::infer_type(as_decimal(tens, scale = 0))
+#> DecimalExtensionType
+#> decimal<decimal128(5, 0)>
 ```

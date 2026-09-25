@@ -183,6 +183,53 @@ or
 [`as_decimal()`](https://pedrobtz.github.io/decimal/dev/reference/as_decimal.md)
 explicitly.
 
+### In a data.table
+
+A `data.table` holds and prints decimal columns, and whenever it
+evaluates an ordinary R expression it uses the decimal methods:
+filtering, arithmetic in `j` or `:=`, and joining or grouping on a
+decimal key all work. For speed, though, some data.table operations skip
+R’s methods and work on the stored text directly, which for a decimal is
+the wrong thing:
+
+- **Sorting.** `dt[order(x)]`, `setorder()` and `setkey()` sort the
+  text, so `10.00` comes before `2.50`. Sort by `xtfrm(x)`, which ranks
+  the values.
+- **Grouped summaries.** With `by`, data.table swaps
+  [`min()`](https://rdrr.io/r/base/Extremes.html),
+  [`max()`](https://rdrr.io/r/base/Extremes.html),
+  [`sum()`](https://rdrr.io/r/base/sum.html) and
+  [`mean()`](https://rdrr.io/r/base/mean.html) for its own versions:
+  [`min()`](https://rdrr.io/r/base/Extremes.html) and
+  [`max()`](https://rdrr.io/r/base/Extremes.html) then compare text and
+  pick the wrong element, and [`sum()`](https://rdrr.io/r/base/sum.html)
+  and [`mean()`](https://rdrr.io/r/base/mean.html) stop with an error.
+  Write `base::max(x)` and so on, or set
+  `options(datatable.optimize = 1)`.
+- **Mixed scales.** `rbindlist()`, `:=` on some of the rows, `fifelse()`
+  and `melt()` combine the text without reconciling scales, so `1.5` and
+  `2.25` end up in one vector with different numbers of decimal places.
+  Joins compare the text too, so `2.5` does not match `2.50`. Give
+  decimal columns one scale first, for example with
+  `as_decimal(x, scale = 2)`.
+
+``` r
+
+dt <- data.table::data.table(price = decimal(c("10.00", "9.50", "-3.00")))
+dt[order(price)]
+#>        price
+#>    <decimal>
+#> 1:     -3.00
+#> 2:     10.00
+#> 3:      9.50
+dt[order(xtfrm(price))]
+#>        price
+#>    <decimal>
+#> 1:     -3.00
+#> 2:      9.50
+#> 3:     10.00
+```
+
 ## Arithmetic
 
 Arithmetic is vectorized, context-controlled, and keeps track of

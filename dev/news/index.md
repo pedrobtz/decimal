@@ -1,6 +1,10 @@
 # Changelog
 
+## decimal (development version)
+
 ## decimal 0.1.1
+
+CRAN release: 2026-09-23
 
 - `decimal` vectors now convert to and from ‘Arrow’ decimal arrays
   directly.
@@ -112,13 +116,37 @@
   and the cases Arrow decimals cannot represent.
 
 - [`format()`](https://rdrr.io/r/base/format.html) on a `decimal` vector
-  no longer errors when it is given the `digits`, `na.encode` and
-  `justify` arguments that
-  [`format.data.frame()`](https://rdrr.io/r/base/format.html) passes to
-  every column. Decimal columns can now be printed inside a base
-  `data.frame`. The arguments are tolerated rather than honoured, so an
-  exact value is never silently rounded for display, and any other
-  unused argument is still an error.
+  now accepts the extra arguments that table printers pass to every
+  column, such as `digits`, `na.encode` and `justify` from
+  [`format.data.frame()`](https://rdrr.io/r/base/format.html),
+  `timezone` from ‘data.table’ and `trim` from
+  [`knitr::kable()`](https://rdrr.io/pkg/knitr/man/kable.html), so
+  decimal columns print inside a base `data.frame`, a `data.table` and a
+  `kable()` table. The arguments are ignored rather than honored, so an
+  exact value is never silently rounded for display. Arguments that
+  would change how a number is written, such as `nsmall`, `scientific`
+  and `big.mark`, are an error.
+
+- Fixed [`rbind()`](https://rdrr.io/r/base/cbind.html) on data frames
+  with `decimal` columns, which always failed with “Can’t assign to
+  elements past the end”. Assigning past the end of a `decimal` vector
+  now grows it with missing values, as it does a base vector, and
+  binding columns of different scales takes the finer one.
+  `x[] <- value` now replaces every element instead of failing.
+
+- [`match()`](https://rdrr.io/r/base/match.html), `%in%` and base
+  [`merge()`](https://rdrr.io/r/base/merge.html) now compare `decimal`
+  values rather than their stored text, so `2.5` matches `2.50`, as `==`
+  already said. Whole numbers still match integers and strings:
+  `decimal("20") %in% 20L` stays `TRUE`.
+
+- New section in
+  [`vignette("decimal-values")`](https://pedrobtz.github.io/decimal/dev/articles/decimal-values.md)
+  on decimal columns in a ‘data.table’: what works, and workarounds for
+  the operations data.table runs on the stored text instead of the
+  values, such as sorting and grouped
+  [`min()`](https://rdrr.io/r/base/Extremes.html) and
+  [`max()`](https://rdrr.io/r/base/Extremes.html).
 
 ## decimal 0.1.0
 

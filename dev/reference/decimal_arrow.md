@@ -47,7 +47,10 @@ format such an object. Read those tables with
 [`arrow_as_data_frame()`](https://pedrobtz.github.io/decimal/dev/reference/arrow_as_data_frame.md).
 
 Infinities and NaNs have no Arrow decimal representation and raise an
-error on conversion to Arrow.
+error on conversion to Arrow. Arrow accepts a negative scale but Parquet
+does not, so rescale such a vector with `as_decimal(x, scale = 0)`
+before
+[`arrow::write_parquet()`](https://arrow.apache.org/docs/r/reference/write_parquet.html).
 
 ## Options
 

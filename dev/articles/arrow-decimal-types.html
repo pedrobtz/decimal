@@ -21,7 +21,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">decimal</a>
 
-    <small class="nav-text text-danger me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="In-development version">0.1.0.9999</small>
+    <small class="nav-text text-danger me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="In-development version">0.1.1.9000</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -344,7 +344,7 @@ field types:</p>
 </h2>
 <p>Arrow’s decimals are fixed-width integers with a scale, which makes
 them narrower than a <code>decimal</code> vector in two ways worth
-planning around.</p>
+planning around. Parquet adds a third.</p>
 <p><strong>Infinity and NaN have no Arrow decimal.</strong> A
 <code>decimal</code> vector holds them happily; the conversion reports
 which element it cannot represent rather than inventing a value:</p>
@@ -382,6 +382,17 @@ type, they’re exact:</p>
 <span><span class="co">#&gt; &lt;decimal[2]&gt;</span></span>
 <span><span class="co">#&gt; [1] 12345678901234567890.12345678000000000000</span></span>
 <span><span class="co">#&gt; [2] 0.10000000000000000001</span></span></code></pre></div>
+<p><strong>Parquet needs a scale of zero or more.</strong> Arrow’s
+decimal types accept a negative scale, so a vector like
+<code>decimal::decimal("12300", scale = -2)</code> converts to
+<code>decimal128(3, -2)</code> in memory, but Parquet’s decimal type
+does not, and <code><a href="https://arrow.apache.org/docs/r/reference/write_parquet.html" class="external-link">arrow::write_parquet()</a></code> refuses the column.
+Set the scale to zero before writing:</p>
+<div class="sourceCode" id="cb25"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">tens</span> <span class="op">&lt;-</span> <span class="fu">decimal</span><span class="fu">::</span><span class="fu"><a href="../reference/decimal.html">decimal</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"12300"</span>, <span class="st">"4500"</span><span class="op">)</span>, scale <span class="op">=</span> <span class="op">-</span><span class="fl">2</span><span class="op">)</span></span>
+<span><span class="fu">arrow</span><span class="fu">::</span><span class="fu"><a href="https://arrow.apache.org/docs/r/reference/infer_type.html" class="external-link">infer_type</a></span><span class="op">(</span><span class="fu"><a href="../reference/as_decimal.html">as_decimal</a></span><span class="op">(</span><span class="va">tens</span>, scale <span class="op">=</span> <span class="fl">0</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt; DecimalExtensionType</span></span>
+<span><span class="co">#&gt; decimal&lt;decimal128(5, 0)&gt;</span></span></code></pre></div>
 </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside>
