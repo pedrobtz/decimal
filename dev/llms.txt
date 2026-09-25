@@ -52,8 +52,9 @@ Highlights:
   [`sum()`](https://rdrr.io/r/base/sum.html),
   [`prod()`](https://rdrr.io/r/base/prod.html),
   [`min()`](https://rdrr.io/r/base/Extremes.html),
-  [`max()`](https://rdrr.io/r/base/Extremes.html), and
-  [`mean()`](https://rdrr.io/r/base/mean.html).
+  [`max()`](https://rdrr.io/r/base/Extremes.html),
+  [`mean()`](https://rdrr.io/r/base/mean.html), and
+  [`summary()`](https://rdrr.io/r/base/summary.html).
 
 - **Decimal-aware tools.**
   [`quantize()`](https://pedrobtz.github.io/decimal/dev/reference/quantize.md)
@@ -73,6 +74,14 @@ Highlights:
 - **Special values.** `NA`, signed zeros, infinities, and quiet and
   signaling NaNs are supported throughout.
 
+- **Arrow and Parquet.** A decimal column becomes a real Arrow
+  `decimal128()` or `decimal256()` field in
+  [`arrow::write_parquet()`](https://arrow.apache.org/docs/r/reference/write_parquet.html)
+  and
+  [`arrow::arrow_table()`](https://arrow.apache.org/docs/r/reference/table.html),
+  and comes back as a decimal vector on every read path — see
+  [`vignette("arrow-decimal-types")`](https://pedrobtz.github.io/decimal/dev/articles/arrow-decimal-types.md).
+
 ## Installation
 
 Install the released version from CRAN:
@@ -80,6 +89,13 @@ Install the released version from CRAN:
 ``` r
 
 install.packages("decimal")
+```
+
+Or install the development version from GitHub with pak:
+
+``` r
+
+pak::pak("pedrobtz/decimal")
 ```
 
 ## Usage
@@ -153,6 +169,10 @@ quantize(balance, decimal("0.01"))
 - [`vignette("contexts-and-signals")`](https://pedrobtz.github.io/decimal/dev/articles/contexts-and-signals.md)
   covers the arithmetic context: precision, rounding modes, traps, and
   flags.
+
+- [`vignette("arrow-decimal-types")`](https://pedrobtz.github.io/decimal/dev/articles/arrow-decimal-types.md)
+  covers lossless conversion to and from Arrow decimal columns and
+  Parquet files.
 
 - The [General Decimal Arithmetic
   specification](https://speleotrove.com/decimal/decarith.pdf) is the
