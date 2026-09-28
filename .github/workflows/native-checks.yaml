@@ -35,3 +35,10 @@ jobs:
 
   rchk:
     uses: pedrobtz/r-actions/.github/workflows/rchk.yml@v1
+
+  # CRAN's rcnst, rlibro and vnu checks -- the "Additional issues" nothing
+  # above reproduces. No `profile` here, unlike most callers: this workflow
+  # runs only on pull requests, and `quick` would skip all three on every
+  # run it gets.
+  cran-special:
+    uses: pedrobtz/r-actions/.github/workflows/cran-special.yml@v1
