@@ -99,7 +99,7 @@ const char *mpd_version(void);
     defined(__amd64__) || defined(__amd64) || defined(__aarch64__) || \
     defined(__arm64__) || defined(__ppc64__) || defined(__powerpc64__) || \
     defined(__s390x__) || defined(__sparc64__) || defined(__mips64) || \
-    defined(__mips64__) || defined(__loongarch64) || \
+    defined(__mips64__) || defined(__loongarch64) || defined(__wasm64__) || \
     (defined(__riscv_xlen) && __riscv_xlen == 64)
   #define MPD_CONFIG_64 1
   #define CONFIG_64 1
@@ -109,7 +109,7 @@ const char *mpd_version(void);
   #endif
 #elif defined(_WIN32) || defined(__i386__) || defined(__i386) || \
       defined(__arm__) || defined(__ppc__) || defined(__powerpc__) || \
-      defined(__sparc__) || defined(__mips__) || \
+      defined(__sparc__) || defined(__mips__) || defined(__wasm32__) || \
       (defined(__riscv_xlen) && __riscv_xlen == 32)
   #define MPD_CONFIG_32 1
   #define CONFIG_32 1
