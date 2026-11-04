@@ -20,4 +20,4 @@ MPDECIMAL_SOURCES = \
 
 MPDECIMAL_OBJECTS = $(MPDECIMAL_SOURCES:.c=.o)
 
-OBJECTS = decimal.o core.o init.o $(MPDECIMAL_OBJECTS)
+OBJECTS = decimal.o core.o arrow.o init.o $(MPDECIMAL_OBJECTS)
