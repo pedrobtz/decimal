@@ -13,6 +13,9 @@ the production concern:
 - `test-mpdecimal-version.R` — startup and vendored-version checks.
 - `test-arrow.R` — Arrow conversion in both directions, guarded by
   `skip_if_not_installed("arrow")`.
+- `test-zuarrow.R` — the zuarrow registration and the native Arrow decimal
+  codec, guarded by `skip_if_not_installed("zuarrow")`; the offset and arrow
+  cross-checks also need arrow and nanoarrow.
 - `test-data-table.R` — decimal columns in a `data.table`, guarded by
   `skip_if_not_installed("data.table")`. Run queries through `dt_query()`:
   the package namespace does not import data.table, so a bare `dt[...]` in a

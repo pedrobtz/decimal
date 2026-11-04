@@ -31,8 +31,10 @@ flowchart LR
 | Values and methods | `R/decimal.R` | `decimal()`, `new_decimal()`, `vec_arith.decimal()`, `vec_math.decimal()` |
 | Context state | `R/context.R` | `decimal_context()`, `get_decimal_context()`, `decimal_update_flags()` |
 | Arrow interoperability | `R/arrow.R` | `as_decimal.Array()`, `infer_type.decimal()`, `arrow_as_data_frame()` |
+| zuarrow registration | `R/zuarrow.R` | `decimal_register_zuarrow()`, `decimal_arrow_decode()`, `decimal_arrow_encode()` |
 | Native adapter | `R/native-core.R` | `decimal_context_call()`, `decimal_native_result()` |
 | Native kernels | `src/core.c` | `decimal_c_*_strings()`, parsing and result helpers |
+| Arrow C Data kernels | `src/arrow.c` | `decimal_c_arrow_decode()`, `decimal_c_arrow_encode()` on `r.h`-layout handles |
 | Routine registration | `src/init.c` | `CallEntries`, `R_init_decimal()` |
 | Runtime validation | `R/zzz.R`, `R/mpdecimal-version.R` | `.onLoad()`, `decimal_runtime_smoke_test()` |
 | Arithmetic engine | `src/mpdecimal/` | Vendored libmpdec 4.0.1 |
