@@ -1,5 +1,15 @@
 # decimal (development version)
 
+- When the 'zuarrow' package is installed, `decimal` registers itself as the
+  exact R form of every Arrow decimal type, `decimal32` to `decimal256`, and
+  of its own `r.decimal` extension type (#24). zuarrow then reads decimal
+  columns as `decimal` vectors with their Arrow scale, and writes a `decimal`
+  vector as `decimal128(38, s)` when it fits in 38 digits and
+  `decimal256(76, s)` when it fits in 76. A vector that needs more digits, or
+  holds an infinity or a NaN, raises an error of class `decimal_arrow_error`;
+  no value is rounded. The conversion reads and writes the Arrow buffers in C,
+  on any handle in nanoarrow's layout. See `?decimal_zuarrow`.
+
 # decimal 0.1.1
 
 - `decimal` vectors now convert to and from 'Arrow' decimal arrays directly.

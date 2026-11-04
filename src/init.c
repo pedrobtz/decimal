@@ -47,6 +47,8 @@ SEXP decimal_c_predicate_strings(SEXP x, SEXP predicate, SEXP precision,
 SEXP decimal_c_apply_context(SEXP x, SEXP precision, SEXP rounding, SEXP emax,
                              SEXP emin, SEXP traps, SEXP flags, SEXP clamp,
                              SEXP allcr);
+SEXP decimal_c_arrow_decode(SEXP array, SEXP schema);
+SEXP decimal_c_arrow_encode(SEXP x, SEXP precision, SEXP scale, SEXP bits);
 SEXP decimal_c_divide_strings(SEXP x, SEXP y, SEXP precision, SEXP rounding,
                               SEXP emax, SEXP emin, SEXP traps, SEXP flags,
                               SEXP clamp, SEXP allcr);
@@ -76,6 +78,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"decimal_c_adjusted_strings", (DL_FUNC) &decimal_c_adjusted_strings, 1},
     {"decimal_c_predicate_strings", (DL_FUNC) &decimal_c_predicate_strings, 10},
     {"decimal_c_apply_context", (DL_FUNC) &decimal_c_apply_context, 9},
+    {"decimal_c_arrow_decode", (DL_FUNC) &decimal_c_arrow_decode, 2},
+    {"decimal_c_arrow_encode", (DL_FUNC) &decimal_c_arrow_encode, 4},
     {"decimal_c_divide_strings", (DL_FUNC) &decimal_c_divide_strings, 10},
     {NULL, NULL, 0}
 };
