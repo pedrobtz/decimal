@@ -8,9 +8,10 @@ committed next-release scope lives in the
 backlog lives in [Feature Expansion Plan](feature-expansion-plan.md). Durable
 design choices live in [decisions/](decisions/).
 
-## Current Baseline: 0.1.0
+## Current Baseline: 0.1.1
 
-The first functional release is implemented. It provides:
+0.1.1 is on CRAN (published 2026-09-23). The first functional release, 0.1.0,
+provides:
 
 - exact character and integer parsing, context-free shared-scale promotion,
   and explicit double decoding followed by quantization;
@@ -22,10 +23,23 @@ The first functional release is implemented. It provides:
   `same_quantum()`, `adjusted()`, and `number_class()`;
 - cross-platform R CMD check, coverage, and manually dispatched native checks.
 
+0.1.1 added exact conversion to and from Arrow decimal arrays (an Arrow
+extension type over `decimal128()`/`decimal256()` storage, `as_decimal()`
+methods for `Array` and `ChunkedArray`, and `arrow_as_data_frame()`),
+`summary()`, faster character construction, and fixes for native error-path
+leaks and malformed `is.na()`-family results.
+
 The lifecycle remains early: correctness and a coherent R API take priority
 over feature parity with Python's `decimal` module.
 
-## Next: 0.2.0 Decimal Toolbox
+## Next: 0.1.2 Maintenance
+
+A patch release with no new API: the WebAssembly ABI fix for the vendored
+`mpdecimal.h`, CI adoption of the shared r-actions workflows, and any
+wrong-result or memory-safety fixes found by the assurance and bug-hunt
+reviews. Registration with zuarrow waits until zuarrow is on CRAN.
+
+## Then: 0.2.0 Decimal Toolbox
 
 Prioritize Python-inspired operations with clear R-vector use cases:
 
@@ -33,7 +47,9 @@ Prioritize Python-inspired operations with clear R-vector use cases:
 2. Remainder-near, sign copying, magnitude extrema, exponent shifting, and a
    combined quotient/remainder operation.
 3. Total comparisons with an R-appropriate return contract.
-4. Exact, first-class conversion to and from Arrow decimal arrays.
+
+Exact conversion to and from Arrow decimal arrays, first planned for 0.2.0,
+shipped early in 0.1.1.
 
 The release scope, exclusions, sequence, and gates are maintained in the
 [0.2.0 Release Plan](release-0.2.0-plan.md). The broader executable backlog
@@ -43,7 +59,7 @@ remains in [Feature Expansion Plan](feature-expansion-plan.md).
 
 ### Integrations
 
-Arrow conversion moved into 0.2.0; see the
+Arrow conversion shipped in 0.1.1; see the
 [Arrow Integration Plan](arrow-integration-plan.md). Explore fixed-scale or
 money subclasses, DBI conversion, and a stable downstream C API only after
 concrete use cases define the contracts. Native import of Arrow buffers
