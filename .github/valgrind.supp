@@ -1,0 +1,29 @@
+# Valgrind suppressions for the native-checks valgrind leg.
+#
+# arrow and data.table are Suggests used by the tests and examples. Each
+# starts worker threads it keeps for the life of the process: arrow's
+# thread pool when its shared object loads, and data.table's OpenMP pool
+# through libgomp. Each thread's thread-local storage is still referenced
+# only by an interior pointer when R exits, which valgrind calls "possibly
+# lost". The matches are limited to that kind of leak and to stacks that
+# pass through those libraries, so a leak in decimal's own code is still
+# reported.
+{
+   arrow-thread-pool-tls
+   Memcheck:Leak
+   match-leak-kinds: possible
+   ...
+   obj:*/arrow/libs/arrow.so
+   ...
+}
+
+{
+   data-table-openmp-pool-tls
+   Memcheck:Leak
+   match-leak-kinds: possible
+   ...
+   obj:*/libgomp.so*
+   ...
+   obj:*/data.table/libs/data_table.so
+   ...
+}

@@ -26,6 +26,9 @@ jobs:
 
   valgrind:
     uses: pedrobtz/r-actions/.github/workflows/valgrind.yml@v1
+    with:
+      # arrow's and data.table's worker threads, "possibly lost" at exit.
+      suppressions: .github/valgrind.supp
 
   lto:
     uses: pedrobtz/r-actions/.github/workflows/lto.yml@v1
