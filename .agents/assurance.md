@@ -19,6 +19,10 @@ files read by other systems. No object outlives its call (no external
 pointers, ALTREP or handles; the context is an R list), so the package has
 no Objects table.
 
+Gap issues are grouped: one per missing required check (fuzz and fuzz-reach
+share #66) and one per oracle group (#67 native boundaries, #68 Parquet,
+#69 limits).
+
 ## Required checks
 
 | Check         | Status | Where              |
@@ -27,25 +31,25 @@ no Objects table.
 | valgrind      | done   | native-checks.yaml |
 | rchk          | done   | native-checks.yaml |
 | gctorture     | done   | native-checks.yaml |
-| analyzers     | gap #0 |                    |
-| alloc-failure | gap #0 |                    |
-| mutation      | gap #0 |                    |
-| fuzz          | gap #0 |                    |
-| fuzz-reach    | gap #0 |                    |
+| analyzers     | gap #63 |                    |
+| alloc-failure | gap #64 |                    |
+| mutation      | gap #65 |                    |
+| fuzz          | gap #66 |                    |
+| fuzz-reach    | gap #66 |                    |
 
 ## Boundaries
 
 <!-- markdownlint-disable MD013 -->
 | Boundary                                    | Oracle                                                                                    | Carried by                                  |
 | ------------------------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------- |
-| decimal text parse and canonical form       | hand-written expected strings only                                                        | gap #0                                      |
-| fractional-digit scan of text (own C)       | hand-written cases, INT range straddled; no differential against the parsed exponent      | gap #0                                      |
-| double to decimal (exact)                   | hand-written IEEE cases (`0.1`, `-0`, specials)                                           | gap #0                                      |
-| decimal to double                           | hand-written cases only; no round trip over random doubles                                | gap #0                                      |
-| arithmetic, Math, quantize, fma vs the spec | hand-written expected values; mpdecimal's decTest vectors are not run                     | gap #0                                      |
-| order and equality proxy keys               | 20-value hand-sorted list and equal-key list; no property test against `mpd_cmp()`        | gap #0                                      |
+| decimal text parse and canonical form       | hand-written expected strings only                                                        | gap #67                                      |
+| fractional-digit scan of text (own C)       | hand-written cases, INT range straddled; no differential against the parsed exponent      | gap #67                                      |
+| double to decimal (exact)                   | hand-written IEEE cases (`0.1`, `-0`, specials)                                           | gap #67                                      |
+| decimal to double                           | hand-written cases only; no round trip over random doubles                                | gap #67                                      |
+| arithmetic, Math, quantize, fma vs the spec | hand-written expected values; mpdecimal's decTest vectors are not run                     | gap #67                                      |
+| order and equality proxy keys               | 20-value hand-sorted list and equal-key list; no property test against `mpd_cmp()`        | gap #67                                      |
 | Arrow decimal to `decimal`                  | property test: Arrow's string cast against `decimal()` re-parse, all four widths          | tests/testthat/test-arrow.R                 |
-| `decimal` to Arrow / Parquet                | round trip through arrow, and a reader without the extension type; no independent reader  | gap #0                                      |
+| `decimal` to Arrow / Parquet                | round trip through arrow, and a reader without the extension type; no independent reader  | gap #68                                      |
 <!-- markdownlint-enable MD013 -->
 
 ## Limits
@@ -53,6 +57,6 @@ no Objects table.
 | Limit                                | Unit                 | Straddled by                     |
 | ------------------------------------ | -------------------- | -------------------------------- |
 | scale within `INT_MAX`               | fractional digits    | tests/testthat/test-native-core.R |
-| context `precision` 1..MPD_MAX_PREC  | digits               | gap #0                           |
-| context `emax` / `emin`              | exponent             | gap #0                           |
-| decimal128 / decimal256 at 38 / 76   | digits of precision  | gap #0                           |
+| context `precision` 1..MPD_MAX_PREC  | digits               | gap #69                           |
+| context `emax` / `emin`              | exponent             | gap #69                           |
+| decimal128 / decimal256 at 38 / 76   | digits of precision  | gap #69                           |

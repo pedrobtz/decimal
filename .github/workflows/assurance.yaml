@@ -1,0 +1,14 @@
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+name: assurance
+
+permissions:
+  contents: read
+
+jobs:
+  # ungated: checks .agents/assurance.md, which a documentation-only pull request may change.
+  assurance:
+    uses: pedrobtz/r-actions/.github/workflows/assurance.yml@v1
