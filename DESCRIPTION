@@ -40,12 +40,16 @@ Suggests:
     data.table,
     dplyr,
     knitr,
+    nanoarrow,
     pillar,
     R6,
     rmarkdown,
     tibble,
-    testthat (>= 3.0.0)
+    testthat (>= 3.0.0),
+    zuarrow
 VignetteBuilder: knitr
+Remotes:
+    pedrobtz/zuarrow
 Config/testthat/edition: 3
 Config/Needs/documentation:
     roxygen2

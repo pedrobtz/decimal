@@ -40,6 +40,7 @@ reference:
       - decimal_arrow
       - arrow_as_data_frame
       - arrow_decimal_type
+      - decimal_zuarrow
   - title: Contexts and signals
     contents:
       - decimal_context

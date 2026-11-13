@@ -233,13 +233,16 @@ decimal_arrow_check_representable <- function(x) {
   special <- is.infinite(x) | is.nan(x)
   if (any(special)) {
     first <- which(special)[1L]
-    rlang::abort(paste0(
-      "Arrow decimal types cannot represent infinities or NaNs; element ",
-      first,
-      " is `",
-      as.character(x)[first],
-      "`."
-    ))
+    rlang::abort(
+      paste0(
+        "Arrow decimal types cannot represent infinities or NaNs; element ",
+        first,
+        " is `",
+        as.character(x)[first],
+        "`."
+      ),
+      class = "decimal_arrow_error"
+    )
   }
   invisible(x)
 }
