@@ -58,7 +58,8 @@ jobs:
       exclude: |
         src/mpdecimal
 
-  # CRAN's rcnst, rlibro and vnu checks, the "Additional issues" that
-  # nothing above reproduces (#22).
+  # CRAN's rcnst, rlibro and vnu checks -- the "Additional issues" nothing
+  # above reproduces. No `profile` here, unlike most callers: `quick` would
+  # skip all three on every pull request.
   cran-special:
     uses: pedrobtz/r-actions/.github/workflows/cran-special.yml@v1
