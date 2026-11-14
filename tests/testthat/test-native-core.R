@@ -250,3 +250,65 @@ test_that("ordering proxy keys sort in numeric order under byte comparison", {
     c("3/0", "3/0", NA_character_)
   )
 })
+
+test_that("malformed context arguments raise an error instead of crashing", {
+  # The R wrappers always pass well-formed context fields, so these shapes are
+  # only reachable through .Call; each used to read past a zero-length vector.
+  ctx <- list(
+    precision = 28L,
+    rounding = "half_even",
+    emax = 999999L,
+    emin = -999999L,
+    traps = character(),
+    flags = character(),
+    clamp = FALSE,
+    allcr = TRUE
+  )
+  scalar_bad <- list(
+    precision = list(integer(), c(28L, 28L), 28, "28", NA_integer_),
+    rounding = list(character(), c("half_even", "half_up"), 1L, NA_character_),
+    emax = list(integer(), c(1L, 1L), 999999, NA_integer_),
+    emin = list(integer(), c(-1L, -1L), -999999, NA_integer_),
+    clamp = list(logical(), c(FALSE, FALSE), 0L, NA),
+    allcr = list(logical(), c(TRUE, TRUE), 1L, NA)
+  )
+  vector_bad <- list(
+    traps = list(1L, NA_character_, list("division_by_zero")),
+    flags = list(1L, NA_character_, list("inexact"))
+  )
+
+  call_with <- function(name, value) {
+    args <- ctx
+    args[name] <- list(value)
+    list(
+      function() {
+        do.call(.Call, c(list(decimal:::decimal_c_apply_context, "1.5"), args))
+      },
+      function() {
+        do.call(
+          .Call,
+          c(list(decimal:::decimal_c_binary_op_strings, "1", "2", "+"), args)
+        )
+      }
+    )
+  }
+
+  for (name in names(scalar_bad)) {
+    for (value in scalar_bad[[name]]) {
+      for (f in call_with(name, value)) {
+        expect_error(f(), paste0("`", name, "` must be"), fixed = TRUE)
+      }
+    }
+  }
+  for (name in names(vector_bad)) {
+    for (value in vector_bad[[name]]) {
+      for (f in call_with(name, value)) {
+        expect_error(f(), paste0("`", name, "` must be"), fixed = TRUE)
+      }
+    }
+  }
+
+  # The well-formed context still works through both kernels.
+  ok <- do.call(.Call, c(list(decimal:::decimal_c_apply_context, "1.5"), ctx))
+  expect_identical(ok[[1]], "1.5")
+})

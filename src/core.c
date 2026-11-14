@@ -186,6 +186,40 @@ static SEXP decimal_signal_names_from_bits(uint32_t bits) {
   return out;
 }
 
+/* The R wrappers always pass a normalized context, but every kernel is also
+ * reachable through .Call, so each field is checked before it is read: a
+ * zero-length vector would otherwise be read out of bounds. Nothing is
+ * allocated yet, so raising here leaks nothing. */
+static int decimal_context_int(SEXP x, const char *name) {
+  if (TYPEOF(x) != INTSXP || XLENGTH(x) != 1 || INTEGER(x)[0] == NA_INTEGER) {
+    Rf_error("Context `%s` must be a non-missing integer scalar", name);
+  }
+  return INTEGER(x)[0];
+}
+
+static int decimal_context_lgl(SEXP x, const char *name) {
+  if (TYPEOF(x) != LGLSXP || XLENGTH(x) != 1 || LOGICAL(x)[0] == NA_LOGICAL) {
+    Rf_error("Context `%s` must be a non-missing logical scalar", name);
+  }
+  return LOGICAL(x)[0];
+}
+
+static void decimal_context_signals(SEXP x, const char *name) {
+  R_xlen_t i;
+
+  if (TYPEOF(x) != STRSXP) {
+    Rf_error("Context `%s` must be a character vector without missing values",
+             name);
+  }
+  for (i = 0; i < XLENGTH(x); ++i) {
+    if (STRING_ELT(x, i) == NA_STRING) {
+      Rf_error(
+          "Context `%s` must be a character vector without missing values",
+          name);
+    }
+  }
+}
+
 static void decimal_context_from_args(
     mpd_context_t *ctx,
     SEXP precision,
@@ -196,9 +230,25 @@ static void decimal_context_from_args(
     SEXP flags,
     SEXP clamp,
     SEXP allcr) {
-  int round = decimal_rounding_from_name(CHAR(STRING_ELT(rounding, 0)));
-  uint32_t trap_bits = decimal_signal_bits_from_names(traps);
-  uint32_t flag_bits = decimal_signal_bits_from_names(flags);
+  int prec_value = decimal_context_int(precision, "precision");
+  int emax_value = decimal_context_int(emax, "emax");
+  int emin_value = decimal_context_int(emin, "emin");
+  int clamp_value = decimal_context_lgl(clamp, "clamp");
+  int allcr_value = decimal_context_lgl(allcr, "allcr");
+  int round;
+  uint32_t trap_bits;
+  uint32_t flag_bits;
+
+  if (TYPEOF(rounding) != STRSXP || XLENGTH(rounding) != 1 ||
+      STRING_ELT(rounding, 0) == NA_STRING) {
+    Rf_error("Context `rounding` must be a non-missing character scalar");
+  }
+  decimal_context_signals(traps, "traps");
+  decimal_context_signals(flags, "flags");
+
+  round = decimal_rounding_from_name(CHAR(STRING_ELT(rounding, 0)));
+  trap_bits = decimal_signal_bits_from_names(traps);
+  flag_bits = decimal_signal_bits_from_names(flags);
 
   if (round < 0) {
     Rf_error("Unsupported decimal rounding mode");
@@ -208,16 +258,16 @@ static void decimal_context_from_args(
   ctx->status = 0;
   ctx->newtrap = 0;
 
-  if (!mpd_qsetprec(ctx, INTEGER(precision)[0])) {
+  if (!mpd_qsetprec(ctx, prec_value)) {
     Rf_error("Invalid decimal precision");
   }
   if (!mpd_qsetround(ctx, round)) {
     Rf_error("Invalid decimal rounding mode");
   }
-  if (!mpd_qsetemax(ctx, INTEGER(emax)[0])) {
+  if (!mpd_qsetemax(ctx, emax_value)) {
     Rf_error("Invalid decimal emax");
   }
-  if (!mpd_qsetemin(ctx, INTEGER(emin)[0])) {
+  if (!mpd_qsetemin(ctx, emin_value)) {
     Rf_error("Invalid decimal emin");
   }
   if (!mpd_qsettraps(ctx, trap_bits)) {
@@ -226,10 +276,10 @@ static void decimal_context_from_args(
   if (!mpd_qsetstatus(ctx, flag_bits)) {
     Rf_error("Invalid decimal flags");
   }
-  if (!mpd_qsetclamp(ctx, LOGICAL(clamp)[0])) {
+  if (!mpd_qsetclamp(ctx, clamp_value)) {
     Rf_error("Invalid decimal clamp");
   }
-  if (!mpd_qsetcr(ctx, LOGICAL(allcr)[0])) {
+  if (!mpd_qsetcr(ctx, allcr_value)) {
     Rf_error("Invalid decimal allcr");
   }
 }

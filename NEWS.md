@@ -1,5 +1,9 @@
 # decimal (development version)
 
+- The native routines now check the type and length of every context
+  argument and raise an error for a malformed one, instead of crashing R when
+  called directly through `.Call()` with a zero-length vector (#41).
+
 - The bundled 'mpdecimal' now builds for WebAssembly (webR). Its configuration
   did not recognise the `wasm32` target and stopped with "unsupported
   platform".
