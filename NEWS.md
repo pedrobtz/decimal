@@ -13,6 +13,29 @@
 
 ## Bug fixes
 
+- `as.double()` and casts to double are now correctly rounded. They went
+  through R's internal string parser, which can be off by one unit in the
+  last place (`decimal("83E25")`, `decimal("1e23", scale = 15)`), returned
+  `Inf` for `1.7976931348623158E+308` instead of the largest double, and gave
+  `NaN` or `Inf` once a value had more than about 4932 digits, as any value
+  in a vector with `scale = 5000` does. Each result is now checked exactly
+  against the midpoints to its neighbouring doubles, so it no longer depends
+  on the platform's C library, and the conversion is tested against nearly
+  4,000 values computed by Python (#45).
+
+- `decimal()` and `as_decimal()` now refuse a value whose scale, its
+  fractional digits minus its exponent, lies outside integer range, such as
+  `"1E-2147483650"`, instead of storing it with the wrong scale. A value whose
+  exponent alone is out of range but whose scale is not, such as
+  `"1.5e+2147483648"`, is now accepted (#52).
+
+- `adjusted()` now raises its "out of integer range" error for an adjusted
+  exponent of -2147483648 instead of returning `NA` (#54).
+
+- The native routines now check the type and length of every context
+  argument and raise an error for a malformed one, instead of crashing R when
+  called directly through `.Call()` with a zero-length vector (#41).
+
 - Converting an Arrow column whose chunks carry different decimal storage now
   checks every chunk. Chunks that differ only in precision, such as dataset
   parts whose values had different magnitudes, now combine exactly, where
@@ -78,7 +101,6 @@
   rounded is a lossy cast, as for a coarser decimal, so `vec_cast("1.23",
   decimal())` now errors. `decimal()` and `as_decimal()` still infer the
   scale from the text.
-||||||| 11134d5
 
 - `arrow::as_arrow_array()` now refuses a value wider than a pinned decimal
   type with an error of class `decimal_arrow_precision_error`, naming the
