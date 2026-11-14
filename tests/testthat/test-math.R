@@ -262,11 +262,18 @@ test_that("summary() quartiles are exact type 7 values for small n", {
       all(quartiles == decimal(expected[[n]])),
       label = paste0("quartiles for n = ", n)
     )
-    # The shared scale pads with trailing zeros, which `as.double()` reports
-    # as lossy; the values themselves are exact.
-    expect_identical(
-      suppressWarnings(as.double(unname(quartiles))),
-      stats::quantile(values, c(0.25, 0.5, 0.75), names = FALSE, type = 7)
+    # Compare in decimal: type 7 quartiles of squares of integers are
+    # multiples of 0.25, which convert from double exactly at scale 2.
+    # (Comparing as doubles would test `as.double()` instead, #45.)
+    reference <- stats::quantile(
+      values,
+      c(0.25, 0.5, 0.75),
+      names = FALSE,
+      type = 7
+    )
+    expect_true(
+      all(unname(quartiles) == as_decimal(reference, scale = 2L)),
+      label = paste0("quartiles match stats::quantile() for n = ", n)
     )
   }
 })
