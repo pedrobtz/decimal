@@ -169,6 +169,61 @@
   instead of 1.75, and `OutDec = ","` raised an error. The weight is now
   chosen from exact text.
 
+- [`vctrs::vec_sort()`](https://vctrs.r-lib.org/reference/vec_order.html),
+  [`vctrs::vec_order()`](https://vctrs.r-lib.org/reference/vec_order.html),
+  `dplyr::arrange(.locale = )` and
+  [`tidyr::expand()`](https://tidyr.tidyverse.org/reference/expand.html)
+  now order negative decimals by value in every collation locale
+  ([\#46](https://github.com/pedrobtz/decimal/issues/46)). Under
+  `en_US.UTF-8`, `vec_sort(decimal(c("-1.25", "-1.2")))` gave -1.20
+  before -1.25, because the order proxy was text that sorted correctly
+  only byte by byte. It is now an integer rank.
+  [`sort()`](https://rdrr.io/r/base/sort.html),
+  [`order()`](https://rdrr.io/r/base/order.html),
+  [`rank()`](https://rdrr.io/r/base/rank.html) and
+  [`dplyr::arrange()`](https://dplyr.tidyverse.org/reference/arrange.html)
+  without `.locale` were already correct.
+
+- `x[[i]] <- value` now widens `x` to the scale of a finer `value`, as
+  `x[i] <- value` always did, instead of silently rounding:
+  `y[[2]] <- decimal("9.123")` on a scale-2 `y` used to store 9.12
+  ([\#50](https://github.com/pedrobtz/decimal/issues/50)).
+
+- Behaviour change:
+  [`vctrs::vec_cast()`](https://vctrs.r-lib.org/reference/vec_cast.html)
+  from a decimal to a coarser decimal type is now a lossy cast. When
+  rounding would change a value it raises an error of class
+  `vctrs_error_cast_lossy`, which
+  [`vctrs::allow_lossy_cast()`](https://vctrs.r-lib.org/reference/vctrs-conditions.html)
+  turns back into rounding; before,
+  `vec_cast(decimal("1.55"), decimal("1.0"))` silently gave 1.6.
+  Dropping trailing zeros, `NA` and special values still casts. This
+  reaches functions that cast a replacement to an existing column:
+  `tidyr::replace_na(decimal(c(NA, "1.5")), decimal("0.125"))` now
+  errors rather than filling in 0.1. Combining vectors of different
+  scales ([`c()`](https://rdrr.io/r/base/c.html), `vec_c()`,
+  [`rbind()`](https://rdrr.io/r/base/cbind.html),
+  [`dplyr::bind_rows()`](https://dplyr.tidyverse.org/reference/bind_rows.html),
+  [`dplyr::if_else()`](https://dplyr.tidyverse.org/reference/if_else.html),
+  [`dplyr::coalesce()`](https://dplyr.tidyverse.org/reference/coalesce.html))
+  still takes the finer scale, and `as_decimal(x, scale = )` still
+  rounds on request
+  ([\#50](https://github.com/pedrobtz/decimal/issues/50)).
+
+- Behaviour change:
+  [`vctrs::vec_cast()`](https://vctrs.r-lib.org/reference/vec_cast.html)
+  from character to a decimal type now uses that type’s scale
+  ([\#51](https://github.com/pedrobtz/decimal/issues/51)).
+  `vec_c("1.123", "2", .ptype = decimal("1.0"))` used to return a vector
+  labelled scale 1 that stored “1.123” and “2” unchanged. Text with
+  fewer digits is padded exactly; text that would be rounded is a lossy
+  cast, as for a coarser decimal, so `vec_cast("1.23", decimal())` now
+  errors.
+  [`decimal()`](https://pedrobtz.github.io/decimal/dev/reference/decimal.md)
+  and
+  [`as_decimal()`](https://pedrobtz.github.io/decimal/dev/reference/as_decimal.md)
+  still infer the scale from the text.
+
 - [`arrow::as_arrow_array()`](https://arrow.apache.org/docs/r/reference/as_arrow_array.html)
   now refuses a value wider than a pinned decimal type with an error of
   class `decimal_arrow_precision_error`, naming the digits the value
