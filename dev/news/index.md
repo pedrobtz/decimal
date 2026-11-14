@@ -2,6 +2,10 @@
 
 ## decimal (development version)
 
+- The bundled ‘mpdecimal’ now builds for WebAssembly (webR). Its
+  configuration did not recognise the `wasm32` target and stopped with
+  “unsupported platform”.
+
 ## decimal 0.1.1
 
 CRAN release: 2026-09-23

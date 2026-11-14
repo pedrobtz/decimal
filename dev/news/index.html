@@ -40,7 +40,8 @@
 
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="development version" id="decimal-development-version">decimal (development version)<a class="anchor" aria-label="anchor" href="#decimal-development-version"></a></h2>
-</div>
+<ul><li>The bundled ‘mpdecimal’ now builds for WebAssembly (webR). Its configuration did not recognise the <code>wasm32</code> target and stopped with “unsupported platform”.</li>
+</ul></div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="0.1.1" id="decimal-011">decimal 0.1.1<a class="anchor" aria-label="anchor" href="#decimal-011"></a></h2><p class="text-muted">CRAN release: 2026-09-23</p>
 <ul><li><p><code>decimal</code> vectors now convert to and from ‘Arrow’ decimal arrays directly. <code><a href="../reference/as_decimal.html">as_decimal()</a></code> gained methods for <code>Array</code> and <code>ChunkedArray</code>. An Arrow decimal column of any width converts exactly, taking its scale from the Arrow type: Arrow’s own decimal-to-string cast produces this package’s canonical storage form once the exponent letter is folded to lowercase, so the strings need no re-parsing, and a property test guards that invariant. For 1,000,000 <code><a href="https://arrow.apache.org/docs/r/reference/data-type.html" class="external-link">decimal128()</a></code> values that takes 0.27s against 0.78s for casting to string and calling <code><a href="../reference/decimal.html">decimal()</a></code>. Arrow integer columns convert exactly at every width, including <code>int64</code> and <code>uint64</code> values a double cannot hold. Other Arrow types convert through the ordinary <code><a href="../reference/as_decimal.html">as_decimal()</a></code> rules for the equivalent R vector.</p></li>
