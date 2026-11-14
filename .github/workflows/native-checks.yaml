@@ -4,11 +4,18 @@ on:
   # Gate the C, and only the C. These jobs take about seventeen minutes in
   # parallel, nearly all of it gctorture, which is worth paying on a change to
   # src/ and on nothing else: a vignette or roxygen edit still gets the
-  # ordinary checks and nothing more.
+  # ordinary checks and nothing more. The r-actions workflows also skip
+  # documentation-only changes themselves.
   pull_request:
     paths:
       - "src/**"
       - ".github/workflows/native-checks.yaml"
+      - ".github/valgrind.supp"
+
+  # The full set runs weekly: gctorture at its full step, and the ASan
+  # containers below.
+  schedule:
+    - cron: "47 4 * * 1"
 
 name: native-checks
 
@@ -20,9 +27,20 @@ name: native-checks
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
+  # UBSan runs on every pull request. AddressSanitizer, in the R-hub
+  # clang-asan and gcc-asan containers, is opt-in in r-actions and runs only
+  # under the full profile: the weekly schedule, a dispatch and a pull
+  # request labelled full-ci (#78).
   sanitizers:
     uses: pedrobtz/r-actions/.github/workflows/sanitizers.yml@v1
+    with:
+      asan: true
+      profile: auto
 
   valgrind:
     uses: pedrobtz/r-actions/.github/workflows/valgrind.yml@v1
@@ -38,3 +56,18 @@ jobs:
 
   rchk:
     uses: pedrobtz/r-actions/.github/workflows/rchk.yml@v1
+
+  # Compiler static analysis (-fanalyzer). Findings in the vendored
+  # mpdecimal are reported but not gated; reporting only until the
+  # package's own code is at zero (#63).
+  analyzers:
+    uses: pedrobtz/r-actions/.github/workflows/analyzers.yml@v1
+    with:
+      exclude: |
+        src/mpdecimal
+
+  # CRAN's rcnst, rlibro and vnu checks -- the "Additional issues" nothing
+  # above reproduces. No `profile` here, unlike most callers: `quick` would
+  # skip all three on every pull request.
+  cran-special:
+    uses: pedrobtz/r-actions/.github/workflows/cran-special.yml@v1
