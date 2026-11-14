@@ -7,9 +7,10 @@
 arrow_decimal_type(precision, scale = 0L)
 }
 \arguments{
-\item{precision}{Total number of digits, at most 76.}
+\item{precision}{Total number of digits, from 1 to 76.}
 
-\item{scale}{Number of fractional digits.}
+\item{scale}{Number of fractional digits, at most \code{precision}. A negative
+scale is accepted for in-memory use, but Parquet cannot store it.}
 }
 \value{
 An Arrow extension type.

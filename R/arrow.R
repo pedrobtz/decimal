@@ -47,9 +47,35 @@
 #' [arrow_as_data_frame()].
 #'
 #' Infinities and NaNs have no Arrow decimal representation and raise an error
-#' on conversion to Arrow. Arrow accepts a negative scale but Parquet does not,
-#' so rescale such a vector with `as_decimal(x, scale = 0)` before
-#' `arrow::write_parquet()`.
+#' on conversion to Arrow. A value wider than a pinned type raises an error of
+#' class `decimal_arrow_precision_error`, never a rounded or wrapped value.
+#' Negative zero has no Arrow representation either and becomes zero: `-0.00`
+#' reads back as `0.00`.
+#'
+#' Arrow accepts a negative scale but Parquet does not, so a vector with a
+#' negative scale is written at scale 0, which holds the same values exactly,
+#' and reads back with scale 0. A negative scale pinned through `type` is kept
+#' in memory, but `arrow::write_parquet()` rejects such a column only after it
+#' has opened, and so emptied, the destination file; the same holds for a
+#' table already carrying a decimal field whose scale exceeds its precision.
+#'
+#' @section Known issue: combining columns of different types:
+#' Combining decimal extension columns that arrow typed differently, with
+#' different scales or storage widths, can silently misread values (#37).
+#' This includes `arrow::concat_arrays()`, `arrow::concat_tables()` and
+#' `arrow::open_dataset()` over parts written separately, followed by
+#' `collect()` or `arrange()`. arrow compares two of this package's extension
+#' types by name alone, so it can reinterpret one part's stored integers at
+#' the other part's scale: 3.125 reads back as 31.25.
+#'
+#' **Workaround:** pin one type with [arrow_decimal_type()] for every part
+#' that will be appended or combined.
+#'
+#' The package checks every chunk it converts and raises an error of class
+#' `decimal_arrow_chunk_error` for a column whose chunks differ in scale or
+#' width. Chunks that differ only in precision are combined exactly. A misread
+#' that arrow's own kernels have already produced, as in
+#' `arrow::concat_arrays()`, cannot be detected.
 #'
 #' @section Options:
 #' `decimal.arrow_extension`: `TRUE` (the default) writes the extension type;
@@ -136,18 +162,77 @@ decimal_register_arrow <- function() {
 }
 
 # The plain decimal array beneath an extension array, or `x` unchanged.
+#
+# arrow compares two `r.decimal` types by name alone, so the chunks of one
+# extension column can carry different storage: a dataset scanned over parts
+# written separately, or `arrow::concat_tables()`. Chunks that differ only in
+# precision are widened to a common type. Chunks that differ in scale or width
+# cannot be combined without reading some of them at the wrong scale, so they
+# are an error (#37).
 decimal_arrow_storage <- function(x) {
   if (!decimal_is_arrow_extension(x$type)) {
     return(x)
   }
-  if (inherits(x, "ChunkedArray")) {
-    chunks <- lapply(x$chunks, function(chunk) chunk$storage())
-    return(do.call(
-      arrow::ChunkedArray$create,
-      c(chunks, list(type = x$type$storage_type()))
-    ))
+  if (!inherits(x, "ChunkedArray")) {
+    return(x$storage())
   }
-  x$storage()
+  declared <- x$type$storage_type()
+  chunks <- lapply(x$chunks, function(chunk) chunk$storage())
+  decimal_arrow_check_chunks(chunks, declared)
+
+  precisions <- vapply(chunks, function(chunk) chunk$type$precision(), 1L)
+  precision <- max(precisions, declared$precision())
+  type <- decimal_arrow_like(declared, precision)
+  chunks <- lapply(chunks, function(chunk) {
+    if (chunk$type$Equals(type)) chunk else chunk$cast(type)
+  })
+  do.call(arrow::ChunkedArray$create, c(chunks, list(type = type)))
+}
+
+# A decimal type of the same width and scale as `type`, at `precision`.
+decimal_arrow_like <- function(type, precision) {
+  constructor <- switch(
+    class(type)[[1L]],
+    Decimal32Type = arrow::decimal32,
+    Decimal64Type = arrow::decimal64,
+    Decimal128Type = arrow::decimal128,
+    Decimal256Type = arrow::decimal256
+  )
+  constructor(precision, type$scale())
+}
+
+decimal_arrow_check_chunks <- function(chunks, declared) {
+  for (i in seq_along(chunks)) {
+    type <- chunks[[i]]$type
+    same <- identical(class(type)[[1L]], class(declared)[[1L]]) &&
+      identical(type$scale(), declared$scale())
+    if (!same) {
+      decimal_arrow_abort(
+        c(
+          paste0(
+            "Chunk ",
+            i,
+            " of a decimal column is stored as `",
+            type$ToString(),
+            "`, but the column's type is `",
+            declared$ToString(),
+            "`."
+          ),
+          i = paste0(
+            "arrow combined parts of different scale or width under one ",
+            "type, and some values would be misread."
+          ),
+          i = paste0(
+            "Pin one type with `arrow_decimal_type()` for every part that ",
+            "will be appended or combined."
+          )
+        ),
+        class = "decimal_arrow_chunk_error",
+        call = NULL
+      )
+    }
+  }
+  invisible(chunks)
 }
 
 #' Arrow type for a decimal column
@@ -160,8 +245,9 @@ decimal_arrow_storage <- function(x) {
 #' `arrow::decimal128()` up to 38 digits of precision and
 #' `arrow::decimal256()` above that.
 #'
-#' @param precision Total number of digits, at most 76.
-#' @param scale Number of fractional digits.
+#' @param precision Total number of digits, from 1 to 76.
+#' @param scale Number of fractional digits, at most `precision`. A negative
+#'   scale is accepted for in-memory use, but Parquet cannot store it.
 #'
 #' @return An Arrow extension type.
 #' @seealso [decimal_arrow] for how the type behaves.
@@ -173,6 +259,28 @@ decimal_arrow_storage <- function(x) {
 #' @export
 arrow_decimal_type <- function(precision, scale = 0L) {
   decimal_check_arrow()
+  if (!rlang::is_scalar_integerish(precision) || precision < 1L) {
+    decimal_arrow_abort("`precision` must be a whole number from 1 to 76.")
+  }
+  if (precision > 76L) {
+    decimal_arrow_abort(paste0(
+      "`precision` is ",
+      precision,
+      ", more than the 76 digits `arrow::decimal256()` allows."
+    ))
+  }
+  if (!rlang::is_scalar_integerish(scale)) {
+    decimal_arrow_abort("`scale` must be a whole number.")
+  }
+  if (scale > precision) {
+    decimal_arrow_abort(paste0(
+      "`scale` (",
+      scale,
+      ") must not exceed `precision` (",
+      precision,
+      "); Parquet rejects such a type."
+    ))
+  }
   storage <- if (precision <= 38L) {
     arrow::decimal128(precision, scale)
   } else {
@@ -192,7 +300,7 @@ decimal_from_arrow_decimal <- function(x, scale) {
     x$cast(arrow::string())
   ))
   out <- new_decimal(values, scale = x$type$scale())
-  scale <- decimal_resolve_scale(scale)
+  # The Arrow type carries a scale, so `decimal.default_scale` does not apply.
   if (is.null(scale)) {
     return(out)
   }
@@ -229,11 +337,25 @@ as_decimal.ChunkedArray <- function(x, scale = NULL) {
 
 # Decimal to Arrow ---------------------------------------------------------
 
+decimal_arrow_abort <- function(
+  message,
+  class = NULL,
+  ...,
+  call = rlang::caller_env()
+) {
+  rlang::abort(
+    message,
+    class = c(class, "decimal_arrow_error"),
+    ...,
+    call = call
+  )
+}
+
 decimal_arrow_check_representable <- function(x) {
   special <- is.infinite(x) | is.nan(x)
   if (any(special)) {
     first <- which(special)[1L]
-    rlang::abort(paste0(
+    decimal_arrow_abort(paste0(
       "Arrow decimal types cannot represent infinities or NaNs; element ",
       first,
       " is `",
@@ -244,28 +366,74 @@ decimal_arrow_check_representable <- function(x) {
   invisible(x)
 }
 
+# The digits the widest value of `x` needs at `scale`, or `NA` when every
+# value is missing.
+decimal_arrow_digits <- function(x, scale) {
+  adj <- adjusted(x)
+  if (all(is.na(adj))) {
+    return(NA_integer_)
+  }
+  as.integer(max(adj, na.rm = TRUE) + 1L + scale)
+}
+
+# The storage scale for `x`: its own, except that a negative scale is written
+# as 0. Arrow accepts a negative scale but Parquet does not, and
+# `arrow::write_parquet()` only finds out after it has truncated the file.
+decimal_arrow_scale <- function(x) {
+  max(decimal_scale(x), 0L)
+}
+
 # The digits the widest value needs, but never fewer than the scale: Arrow
 # accepts `decimal128(1, 2)` for 0.05, while Parquet rejects any decimal whose
 # scale exceeds its precision.
 decimal_arrow_precision <- function(x) {
-  scale <- decimal_scale(x)
-  adj <- adjusted(x)
-  digits <- if (all(is.na(adj))) 1L else max(adj, na.rm = TRUE) + 1L + scale
-  max(digits, scale, 1L)
+  scale <- decimal_arrow_scale(x)
+  digits <- decimal_arrow_digits(x, scale)
+  max(digits, scale, 1L, na.rm = TRUE)
+}
+
+# Arrow's cast checks the precision only while a value fits the type's width
+# and silently wraps one that does not, so check every value first.
+decimal_arrow_check_precision <- function(
+  x,
+  storage,
+  call = rlang::caller_env()
+) {
+  digits <- decimal_arrow_digits(x, storage$scale())
+  if (is.na(digits) || digits <= storage$precision()) {
+    return(invisible(x))
+  }
+  decimal_arrow_abort(
+    paste0(
+      "`x` needs ",
+      digits,
+      " digits of precision at scale ",
+      storage$scale(),
+      ", more than the ",
+      storage$precision(),
+      " of `",
+      storage$ToString(),
+      "`."
+    ),
+    class = "decimal_arrow_precision_error",
+    digits = digits,
+    type = storage$ToString(),
+    call = call
+  )
 }
 
 # The plain Arrow decimal type that holds every value of `x`.
 decimal_arrow_storage_type <- function(x) {
   decimal_arrow_check_representable(x)
   precision <- decimal_arrow_precision(x)
-  scale <- decimal_scale(x)
+  scale <- decimal_arrow_scale(x)
   if (precision <= 38L) {
     return(arrow::decimal128(precision, scale))
   }
   if (precision <= 76L) {
     return(arrow::decimal256(precision, scale))
   }
-  rlang::abort(paste0(
+  decimal_arrow_abort(paste0(
     "`x` needs ",
     precision,
     " digits of precision, more than the 76 digits `arrow::decimal256()` ",
@@ -300,6 +468,7 @@ as_arrow_array.decimal <- function(x, ..., type = NULL) {
   }
   if (decimal_is_arrow_decimal(storage)) {
     decimal_arrow_check_representable(x)
+    decimal_arrow_check_precision(x, storage)
   }
   out <- arrow::Array$create(vctrs::vec_data(x))$cast(storage)
   if (decimal_is_arrow_extension(type)) {

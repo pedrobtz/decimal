@@ -94,9 +94,10 @@ test_that("decimal.default_scale supplies an opt-in conversion scale", {
   expect_identical(decimal_from_double(0.002), decimal("0.0020000", scale = 7L))
   expect_identical(as_decimal("1.2"), decimal("1.2000000", scale = 7L))
   expect_identical(as_decimal(1L), decimal("1.0000000", scale = 7L))
+  # A decimal vector already has a scale; the option does not change it.
   expect_identical(
     as_decimal(decimal("1.2", scale = 1L)),
-    decimal("1.2000000", scale = 7L)
+    decimal("1.2", scale = 1L)
   )
   expect_identical(
     as_decimal(0.002, scale = 3L),
@@ -124,6 +125,35 @@ test_that("unsupported construction paths fail cleanly", {
     "`x` must be a double vector"
   )
   expect_error(decimal("not-a-decimal"), "Invalid decimal string at element 1")
+})
+
+test_that("a value whose scale is outside integer range is refused", {
+  msg <- "scale outside integer range at element"
+
+  # Scale is fractional digits minus exponent; +-2147483647 is the limit.
+  expect_identical(decimal_scale(decimal("1E-2147483647")), 2147483647L)
+  expect_identical(decimal_scale(decimal("1E+2147483647")), -2147483647L)
+  expect_identical(decimal_scale(decimal("1.5E-2147483646")), 2147483647L)
+  expect_identical(decimal_scale(decimal("1.5E+2147483648")), -2147483647L)
+  expect_identical(
+    as.character(decimal("1.5E+2147483648")),
+    "1.5e+2147483648"
+  )
+
+  expect_error(decimal("1E-2147483648"), msg)
+  expect_error(decimal("1E+2147483648"), msg)
+  expect_error(decimal("1.5E-2147483647"), msg)
+  expect_error(decimal("1.5E+2147483649"), msg)
+  expect_error(decimal(c("1E-2147483650", "2.5")), paste(msg, "1"))
+  expect_error(decimal(c("2.5", "1e2147483648")), paste(msg, "2"))
+  expect_error(decimal("1E-2147483650", scale = 2L), msg)
+  expect_error(as_decimal("1E-2147483650"), msg)
+
+  # Special values carry no scale and still pass.
+  expect_identical(
+    as.character(decimal(c("NaN", "-Infinity", "sNaN", "2.5", NA))),
+    c("NaN", "-Infinity", "sNaN", "2.5", NA)
+  )
 })
 
 test_that("decimal formatting and reverse coercions behave as specified", {
@@ -200,8 +230,12 @@ test_that("vec_ptype labels and casts are defined", {
   )
 
   expect_identical(
-    vctrs::vec_cast(c("1.2300", NA_character_), decimal()),
+    vctrs::vec_cast(c("1.2300", NA_character_), decimal(scale = 4L)),
     decimal(c("1.2300", NA_character_))
+  )
+  expect_error(
+    vctrs::vec_cast("1.2300", decimal()),
+    class = "vctrs_error_cast_lossy"
   )
   expect_identical(
     vctrs::vec_cast(c(1L, NA_integer_), decimal()),
@@ -330,6 +364,169 @@ test_that("assigning with an empty index replaces every element", {
   expect_identical(empty, decimal())
 })
 
+test_that("`[[<-` widens to a finer value's scale, like `[<-` (#50)", {
+  y <- decimal(c("1.50", "2.25"))
+  y[[2]] <- decimal("9.123")
+  expect_identical(y, decimal(c("1.500", "9.123")))
+
+  z <- decimal(c("1.50", "2.25"))
+  z[2] <- decimal("9.123")
+  expect_identical(z, y)
+
+  named <- decimal(c(a = "1.5", b = "2.5"))
+  named[["b"]] <- decimal("0.125")
+  expect_identical(named, decimal(c(a = "1.500", b = "0.125")))
+
+  coarse <- decimal(c("1.50", "2.25"))
+  coarse[[1]] <- 3L
+  expect_identical(coarse, decimal(c("3.00", "2.25")))
+  coarse[[2]] <- decimal("Infinity")
+  expect_identical(coarse, decimal(c("3.00", "Infinity")))
+  coarse[[1]] <- NA
+  expect_identical(coarse, decimal(c(NA, "Infinity"), scale = 2L))
+
+  expect_error(y[[1]] <- 0.5, class = "vctrs_error_incompatible_type")
+})
+
+test_that("casting to a coarser decimal is a lossy cast (#50)", {
+  to <- decimal("1.0")
+
+  expect_error(
+    vctrs::vec_cast(decimal(c("1.25", "1.55")), to),
+    class = "vctrs_error_cast_lossy"
+  )
+  expect_snapshot(vctrs::vec_cast(decimal("1.55"), to), error = TRUE)
+  expect_identical(
+    vctrs::allow_lossy_cast(vctrs::vec_cast(decimal("1.55"), to)),
+    decimal("1.6")
+  )
+
+  # Dropping zeros loses no value, and specials have no digits to lose.
+  expect_identical(
+    vctrs::vec_cast(decimal(c("1.50", "-0.00", NA, "NaN", "-Infinity")), to),
+    decimal(c("1.5", "-0.0", NA, "NaN", "-Infinity"))
+  )
+  expect_identical(
+    vctrs::vec_cast(decimal("1.5"), decimal("1.000")),
+    decimal("1.500")
+  )
+  expect_identical(
+    vctrs::vec_cast(decimal("150"), decimal("1E+1", scale = -1L)),
+    decimal("150", scale = -1L)
+  )
+  expect_error(
+    vctrs::vec_cast(decimal("155"), decimal("1E+1", scale = -1L)),
+    class = "vctrs_error_cast_lossy"
+  )
+})
+
+test_that("casting text to a decimal type uses that type's scale (#51)", {
+  to <- decimal("1.0")
+
+  expect_identical(
+    vctrs::vec_cast(c("1.2", "2", "-0", NA, "NaN", "Infinity"), to),
+    decimal(c("1.2", "2.0", "-0.0", NA, "NaN", "Infinity"))
+  )
+  expect_identical(
+    vctrs::vec_c("1.20", "2", .ptype = to),
+    decimal(c("1.2", "2.0"))
+  )
+  expect_identical(
+    vctrs::vec_cast("1.5", decimal("1.000")),
+    decimal("1.500")
+  )
+  expect_error(
+    vctrs::vec_c("1.123", "2", .ptype = to),
+    class = "vctrs_error_cast_lossy"
+  )
+  expect_snapshot(vctrs::vec_cast(c("1.5", "1.123"), to), error = TRUE)
+  expect_identical(
+    vctrs::allow_lossy_cast(vctrs::vec_c("1.123", "2", .ptype = to)),
+    decimal(c("1.1", "2.0"))
+  )
+})
+
+# Every finite element of a decimal vector carries exactly the vector's scale.
+expect_scale_invariant <- function(x) {
+  expect_s3_class(x, "decimal")
+  digits <- decimal:::.decimal_string_scale(vctrs::vec_data(x))
+  expect_identical(
+    unique(digits[!is.na(digits)]),
+    if (any(!is.na(digits))) attr(x, "scale") else integer()
+  )
+}
+
+test_that("conversions and assignments keep stored digits at the scale (#51)", {
+  coarse <- decimal(c("1.5", NA, "-Infinity"))
+  fine <- decimal(c("0.125", "-0.000", "NaN"))
+  to <- decimal("1.00")
+  assign_one <- coarse
+  assign_one[2] <- decimal("7.125")
+  assign_two <- coarse
+  assign_two[[2]] <- decimal("9.12345")
+  assign_int <- fine
+  assign_int[[1]] <- 3L
+
+  results <- list(
+    vctrs::vec_c(coarse, fine),
+    vctrs::vec_c(fine, 2L, NA),
+    vctrs::vec_c("1.5", "2", .ptype = to),
+    vctrs::vec_c(1L, NA, .ptype = to),
+    vctrs::vec_cast(c("3", "-0.1", NA, "sNaN"), to),
+    vctrs::vec_cast(c(1L, -2L, NA), to),
+    vctrs::vec_cast(coarse, fine),
+    vctrs::allow_lossy_cast(vctrs::vec_cast(fine, coarse)),
+    vctrs::allow_lossy_cast(vctrs::vec_cast(c("1.555", "2"), to)),
+    vctrs::vec_rbind(data.frame(x = coarse), data.frame(x = fine))$x,
+    rbind(data.frame(x = coarse), data.frame(x = fine))$x,
+    assign_one,
+    assign_two,
+    assign_int,
+    pmax(fine, coarse),
+    decimal_from_double(c(0.1, 2), scale = 3L)
+  )
+  for (result in results) {
+    expect_scale_invariant(result)
+  }
+})
+
+test_that("combining decimals of different scales takes the finer one (#50)", {
+  a <- decimal(c("1.5", NA))
+  b <- decimal("0.125")
+
+  expect_identical(vctrs::vec_c(a, b), decimal(c("1.500", NA, "0.125")))
+  expect_identical(vctrs::vec_c(b, a), decimal(c("0.125", "1.500", NA)))
+  expect_identical(
+    rbind(data.frame(x = a), data.frame(x = b))$x,
+    decimal(c("1.500", NA, "0.125"))
+  )
+
+  skip_if_not_installed("dplyr")
+  expect_identical(dplyr::coalesce(a, b), decimal(c("1.500", "0.125")))
+  expect_identical(
+    dplyr::if_else(c(TRUE, FALSE), a, b),
+    decimal(c("1.500", "0.125"))
+  )
+  expect_identical(
+    dplyr::bind_rows(data.frame(x = a), data.frame(x = b))$x,
+    decimal(c("1.500", NA, "0.125"))
+  )
+})
+
+test_that("tidyr::replace_na() refuses a replacement it would round (#50)", {
+  skip_if_not_installed("tidyr")
+  x <- decimal(c(NA, "1.5"))
+
+  expect_error(
+    tidyr::replace_na(x, decimal("0.125")),
+    class = "vctrs_error_cast_lossy"
+  )
+  expect_identical(
+    tidyr::replace_na(x, decimal("0.100")),
+    decimal(c("0.1", "1.5"))
+  )
+})
+
 test_that("match() and %in% compare values, not their scales", {
   x <- decimal(c("2.5", "20", "0", NA))
   table <- decimal(c("20.00", "2.50", "-0.00", NA))
@@ -367,4 +564,38 @@ test_that("a decimal object that holds doubles is refused rather than printed", 
 
   expect_error(format(bad), "holds doubles")
   expect_error(as.character(bad), "holds doubles")
+})
+
+test_that("a lossy cast to a coarser decimal names the scales and stays a vctrs lossy cast", {
+  err <- expect_error(
+    vctrs::vec_cast("1.2300", decimal()),
+    class = "vctrs_error_cast_lossy"
+  )
+  expect_match(conditionMessage(err), "target has scale 0", fixed = TRUE)
+  expect_match(conditionMessage(err), "need scale 4", fixed = TRUE)
+  expect_match(conditionMessage(err), "as_decimal(x, scale = 0)", fixed = TRUE)
+  expect_identical(
+    vctrs::allow_lossy_cast(vctrs::vec_cast("1.2300", decimal())),
+    decimal("1")
+  )
+  expect_error(
+    vctrs::vec_cast(decimal("1.555"), decimal("1.00")),
+    class = "vctrs_error_cast_lossy"
+  )
+})
+
+test_that("character construction still infers the scale from the strings", {
+  expect_identical(attr(as_decimal("1.2300"), "scale"), 4L)
+  expect_identical(attr(decimal(c("1.5", "2.125")), "scale"), 3L)
+  expect_identical(
+    vctrs::vec_data(decimal(c("1.5", "2.125"))),
+    c("1.500", "2.125")
+  )
+})
+
+test_that("combining a decimal with a character is refused as before", {
+  # Unchanged from 0.1.1: there is no common type of decimal and character.
+  x <- decimal("1.5")
+  expect_error(vctrs::vec_c(x, "2.25"), class = "vctrs_error_incompatible_type")
+  expect_error(c(x, "2.25"), class = "vctrs_error_incompatible_type")
 })

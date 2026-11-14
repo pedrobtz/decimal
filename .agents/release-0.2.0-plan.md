@@ -1,6 +1,7 @@
 # decimal 0.2.0 Release Plan
 
-**Status:** Planned after the 0.1.0 CRAN release.
+**Status:** Planned after 0.1.2. The Arrow slice (item 6) shipped early in
+0.1.1; items 1 to 5 have not started.
 
 ## Objective
 
@@ -26,7 +27,7 @@ smaller set that is committed to 0.2.0.
 | `scaleb` | `scaleb()` | Add integer power-of-ten exponent shifts |
 | `compare_total`, `compare_total_mag` | `compare_total()`, `compare_total_mag()` | Add vectorized integer results `-1L`, `0L`, or `1L` |
 | `divmod` | `divmod()` | Add one-pass quotient and remainder returned as a named list of decimal vectors |
-| (none; R ecosystem) | `as_decimal()` Arrow methods, `arrow_as_data_frame()` | Add exact, first-class conversion to and from Arrow `decimal128()` / `decimal256()` arrays |
+| (none; R ecosystem) | `as_decimal()` Arrow methods, `arrow_as_data_frame()` | Shipped in 0.1.1 |
 
 The API is intentionally function-based rather than mirroring Python methods.
 Arguments recycle with vctrs, outputs preserve names from the longest input
@@ -95,7 +96,11 @@ into the product definition.
 - Ensure one operation produces one aggregated flag/trap report and identifies
   the first failing element.
 
-### 6. Arrow interoperability
+### 6. Arrow interoperability (shipped in 0.1.1)
+
+Delivered in 0.1.1 as described below; kept here as the record of the
+contract.
+
 
 - Add `as_decimal()` methods for Arrow `Array` and `ChunkedArray`, methods on
   `arrow::infer_type()` and `arrow::as_arrow_array()` for `decimal`, and
