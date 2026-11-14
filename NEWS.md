@@ -1,5 +1,14 @@
 # decimal (development version)
 
+- `as.double()` and casts to double are now correctly rounded. They went
+  through R's internal string parser, which can be off by one unit in the
+  last place (`decimal("83E25")`, `decimal("1e23", scale = 15)`), returned
+  `Inf` for `1.7976931348623158E+308` instead of the largest double, and gave
+  `NaN` or `Inf` once a value had more than about 4932 digits, as any value
+  in a vector with `scale = 5000` does. Conversion now uses the C library's
+  correctly rounded `strtod()` and is checked against nearly 4,000 values
+  computed by Python (#45).
+
 - `decimal()` and `as_decimal()` now refuse a value whose scale, its
   fractional digits minus its exponent, lies outside integer range, such as
   `"1E-2147483650"`, instead of storing it with the wrong scale. A value whose

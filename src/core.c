@@ -1048,6 +1048,77 @@ SEXP decimal_c_from_double_strings(SEXP x) {
   return out;
 }
 
+/* Conversion to double hands strtod() a string it rounds correctly.
+ *
+ * R_strtod(), which R's own parser uses, accumulates the digits in a long
+ * double and scales by a power of ten, so it is not correctly rounded and it
+ * overflows to Inf or NaN once the coefficient passes about 4932 digits (as
+ * a vector scale of 5000 makes it). The C library's strtod() is correctly
+ * rounded (round-half-even) for input of any length on every platform R
+ * supports: glibc, the BSD/macOS libc (David Gay's gdtoa), mingw-w64's
+ * __mingw_strtod (gdtoa as well) and the Windows UCRT used since R 4.2.
+ *
+ * Two things keep that input short and locale-proof:
+ *
+ * - The text is always "[-]<coefficient digits>E<exponent>", with no decimal
+ *   point, so it parses the same whatever LC_NUMERIC is. R keeps LC_NUMERIC
+ *   at "C", but a user can change it.
+ *
+ * - A coefficient longer than DECIMAL_DOUBLE_DIGITS is truncated to that
+ *   many digits, and a final sticky digit 1 is appended if anything nonzero
+ *   was dropped. Every double and every midpoint between adjacent doubles
+ *   has at most 767 significant digits, so none of them lies strictly
+ *   between the truncated value and the next value on the 800-digit grid.
+ *   The original and the sticky form therefore fall on the same side of
+ *   every rounding boundary and round to the same double, and the cost
+ *   stays bounded for coefficients of millions of digits.
+ */
+#define DECIMAL_DOUBLE_DIGITS 800
+
+/* Writes the strtod() text for `dec` into `text`, which has room for
+ * DECIMAL_DOUBLE_TEXT bytes. `dec` must be finite; it is consumed (its
+ * coefficient may be shifted and its sign and exponent are overwritten), so
+ * the caller only frees it afterwards. Returns 0 on allocation failure. */
+#define DECIMAL_DOUBLE_TEXT (DECIMAL_DOUBLE_DIGITS + 32)
+
+static int decimal_double_text(mpd_t *dec, char *text) {
+  uint32_t status = 0;
+  int negative = mpd_isnegative(dec);
+  long long expo = (long long)dec->exp;
+  mpd_uint_t rnd = 0;
+  char *digits;
+
+  if (dec->digits > DECIMAL_DOUBLE_DIGITS) {
+    mpd_ssize_t drop = dec->digits - DECIMAL_DOUBLE_DIGITS;
+
+    rnd = mpd_qshiftr(dec, dec, drop, &status);
+    if (rnd == MPD_UINT_MAX) {
+      return 0;
+    }
+    expo += (long long)drop;
+  }
+
+  /* With a zero exponent and positive sign, mpd_to_sci() prints just the
+   * coefficient digits. */
+  mpd_set_positive(dec);
+  dec->exp = 0;
+  digits = mpd_to_sci(dec, 0);
+  if (digits == NULL) {
+    return 0;
+  }
+
+  if (rnd != 0) {
+    snprintf(text, DECIMAL_DOUBLE_TEXT, "%s%s1E%lld", negative ? "-" : "",
+             digits, expo - 1);
+  } else {
+    snprintf(text, DECIMAL_DOUBLE_TEXT, "%s%sE%lld", negative ? "-" : "",
+             digits, expo);
+  }
+
+  mpd_free(digits);
+  return 1;
+}
+
 SEXP decimal_c_to_double_strings(SEXP x) {
   R_xlen_t i;
   SEXP out;
@@ -1061,9 +1132,10 @@ SEXP decimal_c_to_double_strings(SEXP x) {
   for (i = 0; i < XLENGTH(x); ++i) {
     mpd_t *dec;
     uint32_t parse_status = 0;
-    char *text;
+    char text[DECIMAL_DOUBLE_TEXT];
     char *end = NULL;
     double value;
+    int ok;
 
     if (i % 1024 == 0) {
       R_CheckUserInterrupt();
@@ -1092,25 +1164,22 @@ SEXP decimal_c_to_double_strings(SEXP x) {
       continue;
     }
 
-    text = mpd_to_sci(dec, 0);
-    if (text == NULL) {
-      mpd_del(dec);
+    ok = decimal_double_text(dec, text);
+    mpd_del(dec);
+    if (!ok) {
       Rf_error("Unable to format decimal at element %lld",
                (long long)i + 1);
     }
 
-    value = R_strtod(text, &end);
+    /* ERANGE is not an error here: overflow gives +-Inf and underflow a
+     * correctly rounded subnormal or zero, which is the conversion wanted. */
+    value = strtod(text, &end);
     if (end == text || *end != '\0') {
-      mpd_free(text);
-      mpd_del(dec);
       Rf_error("Unable to convert decimal to double at element %lld",
                (long long)i + 1);
     }
 
     REAL(out)[i] = value;
-
-    mpd_free(text);
-    mpd_del(dec);
   }
 
   UNPROTECT(1);
