@@ -13,6 +13,21 @@ read one exactly, which makes it a lossless interchange format, and the
 package uses it in both directions for you. This vignette shows the
 crossings and where the two type systems don’t quite line up.
 
+> **Known issue.** Combining decimal columns that arrow typed
+> differently — different scales or storage widths — can silently
+> misread values. That includes
+> [`arrow::concat_arrays()`](https://arrow.apache.org/docs/r/reference/concat_arrays.html),
+> [`arrow::concat_tables()`](https://arrow.apache.org/docs/r/reference/concat_tables.html)
+> and
+> [`arrow::open_dataset()`](https://arrow.apache.org/docs/r/reference/open_dataset.html)
+> over parts written separately, followed by
+> [`collect()`](https://dplyr.tidyverse.org/reference/compute.html) or
+> [`arrange()`](https://dplyr.tidyverse.org/reference/arrange.html). Pin
+> one type with
+> [`arrow_decimal_type()`](https://pedrobtz.github.io/decimal/dev/reference/arrow_decimal_type.md)
+> for every part you will append or combine. See [Combining parts
+> written separately](#combining-parts-written-separately).
+
 ``` r
 
 library(decimal)
@@ -221,15 +236,21 @@ arrow::as_arrow_array(x, type = arrow::decimal128(20, 2))$type
 #> decimal128(20, 2)
 ```
 
-Either way, Arrow refuses a cast that wouldn’t fit rather than rounding
-silently:
+Either way, a value wider than the pinned type is an error, never a
+rounded or wrapped value. The package checks every value before it hands
+the vector to Arrow, because Arrow’s own cast wraps a value too wide for
+the type’s integer width into a different number:
 
 ``` r
 
 arrow::as_arrow_array(x, type = arrow::decimal128(2, 2))
-#> Error:
-#> ! Invalid: Decimal value does not fit in precision 2
+#> Error in `arrow::as_arrow_array()`:
+#> ! `x` needs 3 digits of precision at scale 2, more than the 2 of `decimal128(2, 2)`.
 ```
+
+[`arrow_decimal_type()`](https://pedrobtz.github.io/decimal/dev/reference/arrow_decimal_type.md)
+also refuses a scale above the precision, which Arrow would accept but
+Parquet rejects.
 
 ### Plain fields, and when you want one
 
@@ -301,6 +322,52 @@ as_decimal(t2$amount)
 #> [1] 100.05 0.01   12.30
 ```
 
+### Combining parts written separately
+
+This is a known issue (#37) with no complete fix yet. When a column is
+written without a pinned type, its Arrow type follows the values: `1.25`
+is stored as `decimal128(3, 2)` and `3.125` as `decimal128(4, 3)`. arrow
+compares two of this package’s extension types by name alone, so it
+treats those two types as equal. Combining them can then reinterpret one
+part’s stored integers at the other part’s scale, so that 3.125 reads
+back as 31.25, with no error. This can happen in
+[`arrow::concat_arrays()`](https://arrow.apache.org/docs/r/reference/concat_arrays.html),
+in
+[`arrow::concat_tables()`](https://arrow.apache.org/docs/r/reference/concat_tables.html),
+and in
+[`arrow::open_dataset()`](https://arrow.apache.org/docs/r/reference/open_dataset.html)
+over files written separately, when the results are collected, sorted or
+filtered.
+
+The package checks every chunk it converts. A column whose chunks carry
+different scales or widths raises an error of class
+`decimal_arrow_chunk_error` instead of being read. Chunks that differ
+only in precision are combined exactly. The package cannot see a misread
+that arrow’s own kernels have already produced:
+[`arrow::concat_arrays()`](https://arrow.apache.org/docs/r/reference/concat_arrays.html),
+and sometimes
+[`arrange()`](https://dplyr.tidyverse.org/reference/arrange.html) over a
+dataset, return the wrong values as one consistently typed array.
+
+The workaround is to pin one type for every part that will be appended
+to or combined with another:
+
+``` r
+
+dir <- tempfile()
+type <- arrow_decimal_type(20, 3)
+for (values in list(c("1.25", "2.50"), c("3.125", "4.5"))) {
+  part <- arrow::arrow_table(
+    x = arrow::as_arrow_array(decimal::decimal(values), type = type)
+  )
+  name <- paste0(values[1], "-{i}.parquet")
+  arrow::write_dataset(part, dir, basename_template = name)
+}
+sort(dplyr::collect(arrow::open_dataset(dir))$x)
+#> <decimal[4]>
+#> [1] 1.250 2.500 3.125 4.500
+```
+
 ### Decimal columns written elsewhere
 
 A Parquet file from Spark, DuckDB or pandas carries plain decimal fields
@@ -342,8 +409,8 @@ names(foreign)[grepl("^decimal", types)]
 ## Where the two type systems differ
 
 Arrow’s decimals are fixed-width integers with a scale, which makes them
-narrower than a `decimal` vector in two ways worth planning around.
-Parquet adds a third.
+narrower than a `decimal` vector in three ways worth planning around.
+Parquet adds a fourth.
 
 **Infinity and NaN have no Arrow decimal.** A `decimal` vector holds
 them happily; the conversion reports which element it cannot represent
@@ -399,17 +466,40 @@ as_decimal(arrow::as_arrow_array(big))
 #> [2] 0.10000000000000000001
 ```
 
+**Negative zero loses its sign.** A `decimal` vector keeps the sign of
+zero, as the General Decimal Arithmetic specification does, but an Arrow
+decimal is a two’s-complement integer with a single zero, so `-0.00`
+comes back as `0.00`:
+
+``` r
+
+as.vector(arrow::as_arrow_array(decimal::decimal(c("-0.00", "1.25"))))
+#> <decimal[2]>
+#> [1] 0.00 1.25
+```
+
+The two compare equal, so only code that inspects the sign of a zero,
+through [`as.character()`](https://rdrr.io/r/base/character.html) for
+example, can tell.
+
 **Parquet needs a scale of zero or more.** Arrow’s decimal types accept
-a negative scale, so a vector like
-`decimal::decimal("12300", scale = -2)` converts to `decimal128(3, -2)`
-in memory, but Parquet’s decimal type does not, and
-[`arrow::write_parquet()`](https://arrow.apache.org/docs/r/reference/write_parquet.html)
-refuses the column. Set the scale to zero before writing:
+a negative scale, but Parquet’s decimal type does not. A vector with a
+negative scale, like `decimal::decimal("12300", scale = -2)`, is
+therefore written at scale zero, which holds the same values exactly,
+and it reads back with scale zero:
 
 ``` r
 
 tens <- decimal::decimal(c("12300", "4500"), scale = -2)
-arrow::infer_type(as_decimal(tens, scale = 0))
+arrow::infer_type(tens)
 #> DecimalExtensionType
 #> decimal<decimal128(5, 0)>
 ```
+
+A negative scale is still available in memory by pinning it, with
+`arrow_decimal_type(3, -2)` or `arrow::decimal128(3, -2)`. Don’t write
+such a column to Parquet:
+[`arrow::write_parquet()`](https://arrow.apache.org/docs/r/reference/write_parquet.html)
+only rejects it after it has opened, and so emptied, the destination
+file. The same holds for any table that already carries a decimal field
+whose scale is negative or above its precision.
