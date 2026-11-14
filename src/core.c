@@ -5,6 +5,7 @@
 
 #include <mpdecimal.h>
 
+#include <float.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -186,6 +187,40 @@ static SEXP decimal_signal_names_from_bits(uint32_t bits) {
   return out;
 }
 
+/* The R wrappers always pass a normalized context, but every kernel is also
+ * reachable through .Call, so each field is checked before it is read: a
+ * zero-length vector would otherwise be read out of bounds. Nothing is
+ * allocated yet, so raising here leaks nothing. */
+static int decimal_context_int(SEXP x, const char *name) {
+  if (TYPEOF(x) != INTSXP || XLENGTH(x) != 1 || INTEGER(x)[0] == NA_INTEGER) {
+    Rf_error("Context `%s` must be a non-missing integer scalar", name);
+  }
+  return INTEGER(x)[0];
+}
+
+static int decimal_context_lgl(SEXP x, const char *name) {
+  if (TYPEOF(x) != LGLSXP || XLENGTH(x) != 1 || LOGICAL(x)[0] == NA_LOGICAL) {
+    Rf_error("Context `%s` must be a non-missing logical scalar", name);
+  }
+  return LOGICAL(x)[0];
+}
+
+static void decimal_context_signals(SEXP x, const char *name) {
+  R_xlen_t i;
+
+  if (TYPEOF(x) != STRSXP) {
+    Rf_error("Context `%s` must be a character vector without missing values",
+             name);
+  }
+  for (i = 0; i < XLENGTH(x); ++i) {
+    if (STRING_ELT(x, i) == NA_STRING) {
+      Rf_error(
+          "Context `%s` must be a character vector without missing values",
+          name);
+    }
+  }
+}
+
 static void decimal_context_from_args(
     mpd_context_t *ctx,
     SEXP precision,
@@ -196,9 +231,25 @@ static void decimal_context_from_args(
     SEXP flags,
     SEXP clamp,
     SEXP allcr) {
-  int round = decimal_rounding_from_name(CHAR(STRING_ELT(rounding, 0)));
-  uint32_t trap_bits = decimal_signal_bits_from_names(traps);
-  uint32_t flag_bits = decimal_signal_bits_from_names(flags);
+  int prec_value = decimal_context_int(precision, "precision");
+  int emax_value = decimal_context_int(emax, "emax");
+  int emin_value = decimal_context_int(emin, "emin");
+  int clamp_value = decimal_context_lgl(clamp, "clamp");
+  int allcr_value = decimal_context_lgl(allcr, "allcr");
+  int round;
+  uint32_t trap_bits;
+  uint32_t flag_bits;
+
+  if (TYPEOF(rounding) != STRSXP || XLENGTH(rounding) != 1 ||
+      STRING_ELT(rounding, 0) == NA_STRING) {
+    Rf_error("Context `rounding` must be a non-missing character scalar");
+  }
+  decimal_context_signals(traps, "traps");
+  decimal_context_signals(flags, "flags");
+
+  round = decimal_rounding_from_name(CHAR(STRING_ELT(rounding, 0)));
+  trap_bits = decimal_signal_bits_from_names(traps);
+  flag_bits = decimal_signal_bits_from_names(flags);
 
   if (round < 0) {
     Rf_error("Unsupported decimal rounding mode");
@@ -208,16 +259,16 @@ static void decimal_context_from_args(
   ctx->status = 0;
   ctx->newtrap = 0;
 
-  if (!mpd_qsetprec(ctx, INTEGER(precision)[0])) {
+  if (!mpd_qsetprec(ctx, prec_value)) {
     Rf_error("Invalid decimal precision");
   }
   if (!mpd_qsetround(ctx, round)) {
     Rf_error("Invalid decimal rounding mode");
   }
-  if (!mpd_qsetemax(ctx, INTEGER(emax)[0])) {
+  if (!mpd_qsetemax(ctx, emax_value)) {
     Rf_error("Invalid decimal emax");
   }
-  if (!mpd_qsetemin(ctx, INTEGER(emin)[0])) {
+  if (!mpd_qsetemin(ctx, emin_value)) {
     Rf_error("Invalid decimal emin");
   }
   if (!mpd_qsettraps(ctx, trap_bits)) {
@@ -226,10 +277,10 @@ static void decimal_context_from_args(
   if (!mpd_qsetstatus(ctx, flag_bits)) {
     Rf_error("Invalid decimal flags");
   }
-  if (!mpd_qsetclamp(ctx, LOGICAL(clamp)[0])) {
+  if (!mpd_qsetclamp(ctx, clamp_value)) {
     Rf_error("Invalid decimal clamp");
   }
-  if (!mpd_qsetcr(ctx, LOGICAL(allcr)[0])) {
+  if (!mpd_qsetcr(ctx, allcr_value)) {
     Rf_error("Invalid decimal allcr");
   }
 }
@@ -695,9 +746,14 @@ SEXP decimal_c_validate_strings(SEXP x) {
  * NA, infinities and NaNs, and also deliberately rejects forms mpdecimal would
  * otherwise accept, such as a leading "+", a bare ".5" or a trailing "1.".
  *
- * Accumulation is done in int64 so that an exponent outside int range, or a
- * difference that leaves it, yields NA exactly as R's integer arithmetic did.
+ * Accumulation is done in int64 and the range check is applied to the
+ * difference, not to the exponent alone: "1.5e+2147483648" has scale
+ * -2147483647, which is representable. A scale outside int range (INT_MIN
+ * included, since that is NA_integer_) yields NA; the constructor turns NA
+ * for a finite value into an error.
  */
+#define DECIMAL_SCALE_EXPO_LIMIT ((int64_t)1 << 40)
+
 static int decimal_scan_string_scale(const char *s) {
   const char *p = s;
   int64_t frac = 0;
@@ -741,18 +797,17 @@ static int decimal_scan_string_scale(const char *s) {
       return NA_INTEGER;
     }
     while (*p >= '0' && *p <= '9') {
-      expo = expo * 10 + (*p - '0');
-      if (expo > (int64_t)INT_MAX + 1) {
-        return NA_INTEGER;
+      /* Saturate rather than overflow: once the exponent is this far out,
+       * no count of fractional digits (at most a string's length, below
+       * 2^31) can bring the scale back into integer range. The rest of the
+       * digits are still scanned so the grammar check below sees them. */
+      if (expo <= DECIMAL_SCALE_EXPO_LIMIT) {
+        expo = expo * 10 + (*p - '0');
       }
       ++p;
     }
     if (negative) {
       expo = -expo;
-    }
-    /* as.integer() rejected anything outside int range, including +2147483648 */
-    if (expo > INT_MAX || expo < -INT_MAX) {
-      return NA_INTEGER;
     }
   }
 
@@ -994,9 +1049,313 @@ SEXP decimal_c_from_double_strings(SEXP x) {
   return out;
 }
 
+/* Conversion to double, correctly rounded (round-half-even) on every platform.
+ *
+ * R_strtod(), which R's own parser uses, accumulates the digits in a long
+ * double, so it is not correctly rounded and overflows once a coefficient
+ * passes about 4932 digits. The C library's strtod() is not a safe substitute
+ * either: the one R links on Windows misrounds some long near-ties. So
+ * strtod() only supplies a first guess, and the guess is then checked exactly:
+ *
+ * - The value is reduced to the text "[-]<digits>E<exponent>". It has no
+ *   decimal point, so neither strtod() nor the parse below depends on
+ *   LC_NUMERIC. A coefficient longer than DECIMAL_DOUBLE_DIGITS is truncated
+ *   to that many digits, with a final sticky digit 1 appended if anything
+ *   nonzero was dropped. Every double and every midpoint between adjacent
+ *   doubles has at most 767 significant digits, so none lies strictly
+ *   between the truncated value and the next value on the 800-digit grid in
+ *   the same decade; the sticky form therefore compares with every double
+ *   and every midpoint exactly as the original does, and rounds the same.
+ *
+ * - Fast path (Clinger): with at most 15 digits and |exponent| <= 22, both
+ *   the coefficient and 10^|exponent| are exact doubles, so a single IEEE
+ *   multiplication or division is the correctly rounded result. This
+ *   assumes double arithmetic is evaluated in double (SSE2 or any 64-bit
+ *   target, as R's supported platforms are), not in x87 extended precision.
+ *
+ * - Otherwise, for the guess g = sig * 2^e2 the midpoints to its neighbours
+ *   are (4 sig + 2) * 2^(e2-2) above and (4 sig - 2) * 2^(e2-2) below, or
+ *   (4 sig - 1) * 2^(e2-2) when sig is the smallest normal significand and
+ *   the gap below is half the gap above. Both are compared exactly with the
+ *   value in mpdecimal, scaling the value by 2^(2-e2) when e2 < 2 so that
+ *   all quantities are integers. The guess moves one ulp at a time until the
+ *   value lies between the midpoints; a value on a midpoint goes to the
+ *   neighbour with the even significand. Stepping above DBL_MAX gives Inf,
+ *   which is IEEE overflow: the midpoint between DBL_MAX and 2^1024 rounds
+ *   to 2^1024 because DBL_MAX's significand is odd.
+ */
+#define DECIMAL_DOUBLE_DIGITS 800
+
+/* Writes the strtod() text for `dec` into `text`, which has room for
+ * DECIMAL_DOUBLE_TEXT bytes. `dec` must be finite; it is consumed (its
+ * coefficient may be shifted and its sign and exponent are overwritten), so
+ * the caller only frees it afterwards. Returns 0 on allocation failure. */
+#define DECIMAL_DOUBLE_TEXT (DECIMAL_DOUBLE_DIGITS + 32)
+
+static int decimal_double_text(mpd_t *dec, char *text) {
+  uint32_t status = 0;
+  int negative = mpd_isnegative(dec);
+  long long expo = (long long)dec->exp;
+  mpd_uint_t rnd = 0;
+  char *digits;
+
+  if (dec->digits > DECIMAL_DOUBLE_DIGITS) {
+    mpd_ssize_t drop = dec->digits - DECIMAL_DOUBLE_DIGITS;
+
+    rnd = mpd_qshiftr(dec, dec, drop, &status);
+    if (rnd == MPD_UINT_MAX) {
+      return 0;
+    }
+    expo += (long long)drop;
+  }
+
+  /* With a zero exponent and positive sign, mpd_to_sci() prints just the
+   * coefficient digits. */
+  mpd_set_positive(dec);
+  dec->exp = 0;
+  digits = mpd_to_sci(dec, 0);
+  if (digits == NULL) {
+    return 0;
+  }
+
+  if (rnd != 0) {
+    snprintf(text, DECIMAL_DOUBLE_TEXT, "%s%s1E%lld", negative ? "-" : "",
+             digits, expo - 1);
+  } else {
+    snprintf(text, DECIMAL_DOUBLE_TEXT, "%s%sE%lld", negative ? "-" : "",
+             digits, expo);
+  }
+
+  mpd_free(digits);
+  return 1;
+}
+
+/* Scratch handles for the exact check, kept across the elements of one call
+ * so that each element does not allocate its own. `pow2` holds 2^k for the
+ * last k used, since nearby values share their binary exponent. The kernel
+ * owns the handles and releases them before anything that can longjmp. */
+typedef struct {
+  mpd_t *value;
+  mpd_t *pow2;
+  mpd_t *scaled;
+  mpd_t *tmp;
+  int64_t k;
+  int valid;
+} decimal_double_scratch;
+
+static void decimal_double_scratch_release(decimal_double_scratch *scratch) {
+  decimal_del_if_allocated(scratch->value);
+  decimal_del_if_allocated(scratch->pow2);
+  decimal_del_if_allocated(scratch->scaled);
+  decimal_del_if_allocated(scratch->tmp);
+  scratch->value = NULL;
+  scratch->pow2 = NULL;
+  scratch->scaled = NULL;
+  scratch->tmp = NULL;
+  scratch->valid = 0;
+}
+
+/* Returns 0 on allocation failure. */
+static int decimal_double_scratch_ready(decimal_double_scratch *scratch) {
+  if (scratch->value != NULL) {
+    return 1;
+  }
+  scratch->value = mpd_qnew();
+  scratch->pow2 = mpd_qnew();
+  scratch->scaled = mpd_qnew();
+  scratch->tmp = mpd_qnew();
+  scratch->valid = 0;
+  if (scratch->value == NULL || scratch->pow2 == NULL ||
+      scratch->scaled == NULL || scratch->tmp == NULL) {
+    decimal_double_scratch_release(scratch);
+    return 0;
+  }
+  return 1;
+}
+
+/* Exact comparison of `a` (positive, integer coefficient times 10^exp) with
+ * m * 2^k, where `scaled` holds a * 2^max(-k, 0) and `pow2` holds 2^|k|.
+ * Returns -1, 0 or 1 in *cmp, or 0 on failure. */
+static int decimal_cmp_dyadic(const mpd_t *scaled, uint64_t m, int64_t k,
+                              const mpd_t *pow2, mpd_t *tmp,
+                              const mpd_context_t *ctx, int *cmp) {
+  uint32_t status = 0;
+
+  mpd_qset_u64_exact(tmp, m, &status);
+  if (k > 0) {
+    mpd_qmul(tmp, tmp, pow2, ctx, &status);
+  }
+  if (status & (MPD_Malloc_error | MPD_Inexact | MPD_Rounded)) {
+    return 0;
+  }
+  *cmp = mpd_qcmp(scaled, tmp, &status);
+  return 1;
+}
+
+/* The correctly rounded double for the positive value `a`, starting from
+ * the guess `guess` (finite or +Inf, not NaN). Returns 0 on allocation
+ * failure. */
+static int decimal_correct_double(double guess,
+                                  decimal_double_scratch *scratch,
+                                  double *out) {
+  uint64_t bits;
+  mpd_context_t ctx;
+  const mpd_t *a = scratch->value;
+  mpd_t *pow2 = scratch->pow2;
+  mpd_t *scaled = scratch->scaled;
+  mpd_t *tmp = scratch->tmp;
+
+  mpd_maxcontext(&ctx);
+  ctx.traps = 0;
+  ctx.status = 0;
+
+  if (guess > DBL_MAX) {
+    guess = DBL_MAX;
+  }
+  if (guess < 0) {
+    guess = 0;
+  }
+  memcpy(&bits, &guess, sizeof bits);
+
+  for (;;) {
+    uint64_t raw_exponent = bits >> 52;
+    uint64_t fraction = bits & ((UINT64_C(1) << 52) - 1);
+    uint64_t sig = raw_exponent == 0 ? fraction
+                                     : (fraction | (UINT64_C(1) << 52));
+    int64_t e2 = raw_exponent == 0 ? -1074 : (int64_t)raw_exponent - 1075;
+    int64_t k = e2 - 2;
+    uint64_t abs_k = (uint64_t)(k < 0 ? -k : k);
+    uint32_t status = 0;
+    int odd = (int)(sig & 1);
+    int cmp_hi;
+    int cmp_lo = 1;
+
+    if (!scratch->valid || scratch->k != (int64_t)abs_k) {
+      scratch->valid = 0;
+      mpd_qset_u64_exact(tmp, abs_k, &status);
+      mpd_qset_u64_exact(pow2, 2, &status);
+      mpd_qpow(pow2, pow2, tmp, &ctx, &status);
+      if (status & (MPD_Malloc_error | MPD_Inexact | MPD_Rounded)) {
+        return 0;
+      }
+      scratch->k = (int64_t)abs_k;
+      scratch->valid = 1;
+    }
+    if (k < 0) {
+      mpd_qmul(scaled, a, pow2, &ctx, &status);
+    } else if (!mpd_qcopy(scaled, a, &status)) {
+      return 0;
+    }
+    if (status & (MPD_Malloc_error | MPD_Inexact | MPD_Rounded)) {
+      return 0;
+    }
+
+    if (!decimal_cmp_dyadic(scaled, 4 * sig + 2, k, pow2, tmp, &ctx,
+                            &cmp_hi)) {
+      return 0;
+    }
+    if (cmp_hi > 0 || (cmp_hi == 0 && odd)) {
+      if (bits == UINT64_C(0x7FEFFFFFFFFFFFFF)) {
+        *out = R_PosInf;
+        return 1;
+      }
+      ++bits;
+      continue;
+    }
+
+    if (sig != 0) {
+      uint64_t m_lo =
+          (fraction == 0 && raw_exponent > 1) ? 4 * sig - 1 : 4 * sig - 2;
+
+      if (!decimal_cmp_dyadic(scaled, m_lo, k, pow2, tmp, &ctx, &cmp_lo)) {
+        return 0;
+      }
+    }
+    if (cmp_lo < 0 || (cmp_lo == 0 && odd)) {
+      --bits;
+      continue;
+    }
+
+    memcpy(out, &bits, sizeof bits);
+    return 1;
+  }
+}
+
+/* Converts the text built by decimal_double_text(). Returns 0 on allocation
+ * failure or if the text does not parse. */
+static int decimal_double_from_text(const char *text,
+                                    decimal_double_scratch *scratch,
+                                    double *out) {
+  static const double pow10[] = {
+      1e0,  1e1,  1e2,  1e3,  1e4,  1e5,  1e6,  1e7,  1e8,  1e9,  1e10, 1e11,
+      1e12, 1e13, 1e14, 1e15, 1e16, 1e17, 1e18, 1e19, 1e20, 1e21, 1e22};
+  const char *p = text;
+  const char *digits;
+  size_t ndigits;
+  int negative = 0;
+  char *end = NULL;
+  long long expo;
+  double guess;
+  double value;
+  uint32_t status = 0;
+
+  if (*p == '-') {
+    negative = 1;
+    ++p;
+  }
+  digits = p;
+  while (*p >= '0' && *p <= '9') {
+    ++p;
+  }
+  ndigits = (size_t)(p - digits);
+  if (ndigits == 0 || *p != 'E') {
+    return 0;
+  }
+  expo = strtoll(p + 1, &end, 10);
+  if (end == p + 1 || *end != '\0') {
+    return 0;
+  }
+
+  if (ndigits == 1 && digits[0] == '0') {
+    *out = negative ? -0.0 : 0.0;
+    return 1;
+  }
+
+  if (ndigits <= 15 && expo >= -22 && expo <= 22) {
+    uint64_t coef = 0;
+    size_t j;
+
+    for (j = 0; j < ndigits; ++j) {
+      coef = coef * 10 + (uint64_t)(digits[j] - '0');
+    }
+    value = (double)coef;
+    value = expo >= 0 ? value * pow10[expo] : value / pow10[-expo];
+    *out = negative ? -value : value;
+    return 1;
+  }
+
+  /* ERANGE is not an error: an overflowed or underflowed guess is corrected
+   * like any other. */
+  guess = strtod(digits, &end);
+  if (end == digits || *end != '\0' || ISNAN(guess)) {
+    return 0;
+  }
+
+  if (!decimal_double_scratch_ready(scratch)) {
+    return 0;
+  }
+  mpd_qset_string_exact(scratch->value, digits, &status);
+  if (status != 0 || !decimal_correct_double(guess, scratch, &value)) {
+    return 0;
+  }
+  *out = negative ? -value : value;
+  return 1;
+}
+
 SEXP decimal_c_to_double_strings(SEXP x) {
   R_xlen_t i;
   SEXP out;
+  decimal_double_scratch scratch = {NULL, NULL, NULL, NULL, 0, 0};
 
   if (TYPEOF(x) != STRSXP) {
     Rf_error("`x` must be a character vector");
@@ -1007,11 +1366,12 @@ SEXP decimal_c_to_double_strings(SEXP x) {
   for (i = 0; i < XLENGTH(x); ++i) {
     mpd_t *dec;
     uint32_t parse_status = 0;
-    char *text;
-    char *end = NULL;
+    char text[DECIMAL_DOUBLE_TEXT];
     double value;
+    int ok;
 
     if (i % 1024 == 0) {
+      decimal_double_scratch_release(&scratch);
       R_CheckUserInterrupt();
     }
 
@@ -1020,9 +1380,14 @@ SEXP decimal_c_to_double_strings(SEXP x) {
       continue;
     }
 
-    dec = decimal_qnew_checked();
+    dec = mpd_qnew();
+    if (dec == NULL) {
+      decimal_double_scratch_release(&scratch);
+      Rf_error("mpdecimal allocation failure");
+    }
     if (!decimal_parse_exact(dec, x, i, &parse_status)) {
       mpd_del(dec);
+      decimal_double_scratch_release(&scratch);
       decimal_abort_parse(parse_status, i);
     }
 
@@ -1038,27 +1403,24 @@ SEXP decimal_c_to_double_strings(SEXP x) {
       continue;
     }
 
-    text = mpd_to_sci(dec, 0);
-    if (text == NULL) {
-      mpd_del(dec);
+    ok = decimal_double_text(dec, text);
+    mpd_del(dec);
+    if (!ok) {
+      decimal_double_scratch_release(&scratch);
       Rf_error("Unable to format decimal at element %lld",
                (long long)i + 1);
     }
 
-    value = R_strtod(text, &end);
-    if (end == text || *end != '\0') {
-      mpd_free(text);
-      mpd_del(dec);
+    if (!decimal_double_from_text(text, &scratch, &value)) {
+      decimal_double_scratch_release(&scratch);
       Rf_error("Unable to convert decimal to double at element %lld",
                (long long)i + 1);
     }
 
     REAL(out)[i] = value;
-
-    mpd_free(text);
-    mpd_del(dec);
   }
 
+  decimal_double_scratch_release(&scratch);
   UNPROTECT(1);
   return out;
 }
@@ -1966,7 +2328,8 @@ SEXP decimal_c_adjusted_strings(SEXP x) {
       INTEGER(out)[i] = NA_INTEGER;
     } else {
       mpd_ssize_t adj = mpd_adjexp(dec);
-      if (adj > INT_MAX || adj < INT_MIN) {
+      /* INT_MIN is NA_integer_ in R, so the usable range is symmetric. */
+      if (adj > INT_MAX || adj < -INT_MAX) {
         mpd_del(dec);
         Rf_error("Adjusted exponent out of integer range at element %lld",
                  (long long)i + 1);
