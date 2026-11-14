@@ -1101,12 +1101,60 @@ decimal_trimmed_mean <- function(x, trim) {
   decimal_reduce(x, "+") / as.integer(length(x))
 }
 
+#' Summaries of decimal vectors
+#'
+#' `sum()`, `prod()`, `mean()`, `min()`, `max()` and `range()` compute in
+#' decimal arithmetic and return a `decimal` vector. Integer vectors can be
+#' mixed in; doubles and strings are refused, as they are in arithmetic.
+#'
+#' A missing value gives `NA` unless `na.rm = TRUE`. A `NaN` gives `NaN`, and a
+#' signaling NaN raises `invalid_operation`. `na.rm = TRUE` removes both
+#' missing values and NaNs, because [is.na()] is true for a NaN.
+#'
+#' `mean()` sums the values, then divides under the active context. A `trim`
+#' between 0 and 0.5 drops `floor(n * trim)` values from each end of the
+#' sorted vector before averaging, and a `trim` of 0.5 or more gives the
+#' median, as in [mean.default()].
+#'
+#' @section Put a decimal first:
+#' R picks the method for `sum()`, `prod()`, `min()`, `max()` and `range()`
+#' from the first argument alone. When that argument is not a decimal, as in
+#' `min(10L, x)`, R never calls these methods and treats a decimal as the
+#' text it stores. `min()`, `max()` and `range()` then return a character
+#' vector compared as text, so `min(10L, decimal("9"))` is `"10"`, and `sum()`
+#' and `prod()` fail with "invalid 'type' (character) of argument". The
+#' package has no way to intercept this, nor to make it an error. Put a
+#' decimal first, `min(x, 10L)`, or convert first, `min(decimal(10L), x)`.
+#'
+#' [pmax()] and [pmin()] are not generic. With a decimal first they compare
+#' values, and stop with an error when a later argument has a finer scale
+#' than the first, because base R would give the result the first argument's
+#' scale. With anything else first they return a character vector.
+#'
+#' @param x,... `decimal` or integer vectors. A decimal must come first; see
+#'   "Put a decimal first".
+#' @param na.rm Whether to remove missing values and NaNs first.
+#' @param trim The fraction of values to drop from each end before averaging.
+#' @param finite Not supported; `TRUE` is an error.
+#' @return A `decimal` vector: of length two for `range()`, otherwise of
+#'   length one.
+#' @examples
+#' x <- decimal(c("9.50", "10", "2.25"))
+#' sum(x)
+#' max(x, 12L)
+#' range(x)
+#' mean(decimal(c("1", "2", "3", "100")), trim = 0.25)
+#' @name decimal-summaries
+NULL
+
 # vctrs' `mean()` method drops `trim`, so decimal has its own.
+#' @rdname decimal-summaries
 #' @export
 mean.decimal <- function(x, trim = 0, na.rm = FALSE, ...) {
   vec_math.decimal("mean", x, trim = trim, na.rm = na.rm)
 }
 
+#' @rdname decimal-summaries
 #' @export
 Summary.decimal <- function(..., na.rm = FALSE) {
   switch(
@@ -1547,6 +1595,7 @@ same_quantum <- function(x, y) {
   )
 }
 
+#' @rdname decimal-summaries
 #' @export
 range.decimal <- function(x, ..., na.rm = FALSE, finite = FALSE) {
   if (isTRUE(finite)) {
@@ -1578,11 +1627,13 @@ range.decimal <- function(x, ..., na.rm = FALSE, finite = FALSE) {
   c(sorted[1L], sorted[length(sorted)])
 }
 
+#' @rdname decimal-summaries
 #' @export
 min.decimal <- function(x, ..., na.rm = FALSE) {
   decimal_extrema(c(list(x), list(...)), na.rm = na.rm, which = "min")
 }
 
+#' @rdname decimal-summaries
 #' @export
 max.decimal <- function(x, ..., na.rm = FALSE) {
   decimal_extrema(c(list(x), list(...)), na.rm = na.rm, which = "max")

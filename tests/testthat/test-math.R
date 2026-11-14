@@ -285,6 +285,17 @@ test_that("summary() tolerates the arguments summary.data.frame passes", {
   expect_error(summary(x, bogus = TRUE), "`...` must be empty")
 })
 
+test_that("min(), max() and range() compare values when a decimal comes first", {
+  expect_identical(min(decimal("9"), 10L), decimal("9"))
+  expect_identical(max(decimal("10"), 2L), decimal("10"))
+  expect_identical(max(decimal(c("10", "100")), 9L), decimal("100"))
+  expect_identical(range(decimal("10"), 2L), decimal(c("2", "10")))
+  expect_identical(
+    max(decimal("9.5"), decimal(c("10", "100"))),
+    decimal("100.0")
+  )
+})
+
 test_that("is.unsorted() orders decimal values, not their text", {
   expect_false(is.unsorted(decimal(c("9", "10"))))
   expect_true(is.unsorted(decimal(c("10", "9"))))

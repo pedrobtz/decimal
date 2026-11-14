@@ -147,6 +147,10 @@ it, say it — call `decimal()` or `as_decimal()` explicitly.
 A few base R functions are not generic and work on the stored text rather
 than through the decimal methods:
 
+- **`min()`, `max()`, `range()`, `sum()` and `prod()`** pick their method
+  from the first argument alone. With a decimal first they work as you'd
+  expect, but `min(10L, decimal("9"))` compares text and returns `"10"`, and
+  `sum(1L, x)` stops with an error. Put a decimal first: `min(x, 10L)`.
 - **`merge()`** matches a decimal key by value, so `2.5` matches `2.50`, but
   with `sort = TRUE`, the default, it orders the result by the key's text:
   `10` comes before `9`. Reorder the result with `order(xtfrm(key))`.

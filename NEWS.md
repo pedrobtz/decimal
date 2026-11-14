@@ -30,6 +30,13 @@
   generic, so with a non-decimal first argument they still return a character
   vector.
 
+- New `?decimal-summaries` documents `sum()`, `prod()`, `mean()`, `min()`,
+  `max()` and `range()` for `decimal` vectors, including a limit no method
+  can lift (#42): R picks the method from the first argument alone, so when
+  that is not a decimal, `min()`, `max()` and `range()` compare the stored
+  text and return a character vector (`min(10L, decimal("9"))` is `"10"`),
+  and `sum()` and `prod()` fail. Put a decimal first.
+
 # decimal 0.1.1
 
 - `decimal` vectors now convert to and from 'Arrow' decimal arrays directly.
