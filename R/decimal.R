@@ -28,6 +28,28 @@ decimal_resolve_scale <- function(scale) {
   decimal_scalar_integer(default, "decimal.default_scale")
 }
 
+# The package's own conversions of exact input: operands, quantums, counts
+# and constants. They never consult `decimal.default_scale`, which is the
+# user's default for `decimal()` and `as_decimal()` alone. `scale = NULL`
+# infers the scale from the text.
+decimal_from_character <- function(x, scale = NULL) {
+  canon <- .decimal_canonicalize_strings(x)
+  if (is.null(scale)) {
+    scale <- decimal_infer_scale(canon)
+  }
+  decimal_restore_names(
+    new_decimal(decimal_rescale_strings(canon, scale), scale = scale),
+    names(x)
+  )
+}
+
+decimal_from_integer <- function(x, scale = 0L) {
+  decimal_restore_names(
+    new_decimal(decimal_rescale_strings(as.character(x), scale), scale = scale),
+    names(x)
+  )
+}
+
 # Fractional digits implied by each canonical (already-validated) decimal
 # string: `coefficient digits after the point - exponent`. NA for elements
 # that are NA, infinities, or NaNs (they carry no fractional-digit count).
@@ -154,7 +176,7 @@ decimal_arith_input <- function(x, arg) {
   }
 
   if (decimal_is_integerish_numeric(x)) {
-    return(as_decimal.integer(x))
+    return(decimal_from_integer(x))
   }
 
   rlang::abort(
@@ -172,7 +194,7 @@ decimal_compare_input <- function(x, arg) {
   }
 
   if (decimal_is_integerish_numeric(x)) {
-    return(as_decimal.integer(x))
+    return(decimal_from_integer(x))
   }
 
   rlang::abort(
@@ -262,10 +284,16 @@ decimal_math_input <- function(x, arg = "x") {
   }
 
   if (decimal_is_integerish_numeric(x)) {
-    return(as_decimal.integer(x))
+    return(decimal_from_integer(x))
   }
 
-  if (is.character(x) || is.double(x)) {
+  # A character operand is exact, so it keeps the scale its text gives. A
+  # double has no exact scale of its own and needs the user's.
+  if (is.character(x)) {
+    return(decimal_from_character(x))
+  }
+
+  if (is.double(x)) {
     return(as_decimal(x))
   }
 
@@ -369,19 +397,19 @@ decimal_extrema <- function(..., na.rm = FALSE, which = c("min", "max")) {
     return(NA_decimal_)
   }
   if (prep$kind == "snan") {
-    return(decimal_unary_math(decimal("sNaN"), "abs"))
+    return(decimal_unary_math(decimal_from_character("sNaN"), "abs"))
   }
   if (prep$kind == "qnan") {
-    return(decimal("NaN"))
+    return(decimal_from_character("NaN"))
   }
   if (length(prep$x) == 0L) {
     if (which == "min") {
       warning("no non-missing arguments to min; returning Inf", call. = FALSE)
-      return(decimal("Infinity"))
+      return(decimal_from_character("Infinity"))
     }
 
     warning("no non-missing arguments to max; returning -Inf", call. = FALSE)
-    return(decimal("-Infinity"))
+    return(decimal_from_character("-Infinity"))
   }
 
   sorted <- sort(prep$x)
@@ -400,7 +428,10 @@ decimal_extrema <- function(..., na.rm = FALSE, which = c("min", "max")) {
 #'
 #' When `scale` is `NULL`, `getOption("decimal.default_scale")` is used when
 #' set. Otherwise, character input infers the largest number of fractional
-#' digits present in `x`, and integer input uses scale zero. Because scale is
+#' digits present in `x`, and integer input uses scale zero. A decimal `x` is
+#' returned unchanged. The option is a default for these conversions only:
+#' operations such as arithmetic with an integer, [round()], [quantize()] and
+#' [summary()] never consult it. Because scale is
 #' a property of the vector, not the element, `decimal("1.2") ==
 #' decimal("1.20")`, and combining them yields one uniformly scaled vector.
 #'
@@ -437,16 +468,19 @@ is_decimal <- function(x) {
 #'
 #' `as_decimal()` is the conversion generic for decimal vectors. Character
 #' values are parsed exactly, integer values are converted exactly, and
-#' existing decimal vectors are returned or rescaled. Promotion to a finer
+#' existing decimal vectors are returned unchanged, or rescaled when `scale`
+#' is given. Promotion to a finer
 #' shared scale is exact and context-free; reduction to a coarser scale is
 #' quantized. Double values are decoded from their exact IEEE 754
 #' representation and therefore require an explicit or globally configured
 #' scale before quantization.
 #'
-#' When `scale` is `NULL`, `getOption("decimal.default_scale")` is used when
-#' set. Without that option, character input uses the largest number of
-#' fractional digits found in the input, integer input uses scale zero, and
-#' double input raises an error. Quantization uses the active
+#' When `scale` is `NULL`, `getOption("decimal.default_scale")` is used for
+#' character, integer and double input when set. Without that option,
+#' character input uses the largest number of fractional digits found in the
+#' input, integer input uses scale zero, and double input raises an error. A
+#' decimal vector or an Arrow decimal array already has a scale and keeps it;
+#' the option does not apply. Quantization uses the active
 #' [decimal_context()].
 #'
 #' An Arrow `Array` or `ChunkedArray` of any decimal type converts exactly,
@@ -472,7 +506,8 @@ as_decimal <- function(x, scale = NULL) {
 #' @rdname as_decimal
 #' @export
 as_decimal.decimal <- function(x, scale = NULL) {
-  scale <- decimal_resolve_scale(scale)
+  # `decimal.default_scale` is a default for converting other types; a
+  # decimal vector already has a scale, so only an explicit one changes it.
   if (is.null(scale)) {
     return(x)
   }
@@ -482,28 +517,14 @@ as_decimal.decimal <- function(x, scale = NULL) {
 #' @rdname as_decimal
 #' @export
 as_decimal.character <- function(x, scale = NULL) {
-  canon <- .decimal_canonicalize_strings(x)
-  scale <- decimal_resolve_scale(scale)
-  scale <- if (is.null(scale)) {
-    decimal_infer_scale(canon)
-  } else {
-    scale
-  }
-  decimal_restore_names(
-    new_decimal(decimal_rescale_strings(canon, scale), scale = scale),
-    names(x)
-  )
+  decimal_from_character(x, decimal_resolve_scale(scale))
 }
 
 #' @rdname as_decimal
 #' @export
 as_decimal.integer <- function(x, scale = NULL) {
   scale <- decimal_resolve_scale(scale)
-  scale <- if (is.null(scale)) 0L else scale
-  decimal_restore_names(
-    new_decimal(decimal_rescale_strings(as.character(x), scale), scale = scale),
-    names(x)
-  )
+  decimal_from_integer(x, if (is.null(scale)) 0L else scale)
 }
 
 #' @rdname as_decimal
@@ -697,12 +718,12 @@ vec_cast.decimal.decimal <- function(x, to, ...) {
 
 #' @export
 vec_cast.decimal.character <- function(x, to, ...) {
-  as_decimal.character(x)
+  decimal_from_character(x)
 }
 
 #' @export
 vec_cast.decimal.integer <- function(x, to, ...) {
-  as_decimal.integer(x, scale = decimal_scale(to))
+  decimal_from_integer(x, scale = decimal_scale(to))
 }
 
 #' @export
@@ -950,11 +971,11 @@ vec_math.decimal <- function(.fn, .x, ...) {
       if (prep$kind == "na") {
         NA_decimal_
       } else if (prep$kind == "snan") {
-        decimal_unary_math(decimal("sNaN"), "abs")
+        decimal_unary_math(decimal_from_character("sNaN"), "abs")
       } else if (prep$kind == "qnan") {
-        decimal("NaN")
+        decimal_from_character("NaN")
       } else if (length(prep$x) == 0L) {
-        decimal("0")
+        decimal_from_character("0")
       } else {
         decimal_reduce(prep$x, "+")
       }
@@ -964,11 +985,11 @@ vec_math.decimal <- function(.fn, .x, ...) {
       if (prep$kind == "na") {
         NA_decimal_
       } else if (prep$kind == "snan") {
-        decimal_unary_math(decimal("sNaN"), "abs")
+        decimal_unary_math(decimal_from_character("sNaN"), "abs")
       } else if (prep$kind == "qnan") {
-        decimal("NaN")
+        decimal_from_character("NaN")
       } else if (length(prep$x) == 0L) {
-        decimal("1")
+        decimal_from_character("1")
       } else {
         decimal_reduce(prep$x, "*")
       }
@@ -984,11 +1005,11 @@ vec_math.decimal <- function(.fn, .x, ...) {
       if (prep$kind == "na") {
         NA_decimal_
       } else if (prep$kind == "snan") {
-        decimal_unary_math(decimal("sNaN"), "abs")
+        decimal_unary_math(decimal_from_character("sNaN"), "abs")
       } else if (prep$kind == "qnan") {
-        decimal("NaN")
+        decimal_from_character("NaN")
       } else if (length(prep$x) == 0L) {
-        decimal("NaN")
+        decimal_from_character("NaN")
       } else {
         decimal_reduce(prep$x, "+") / as.integer(length(prep$x))
       }
@@ -1024,27 +1045,31 @@ Summary.decimal <- function(..., na.rm = FALSE) {
 }
 
 # Type 7 quantiles, the default `stats::quantile()` method, on an already
-# sorted decimal vector. `h` stays exact in double: `probs` are quarters, which
-# are binary fractions, and `n - 1` is a whole number, so the interpolation
-# weight converts to decimal without loss. The interpolation itself runs in
-# decimal arithmetic under the active context.
-decimal_quantile_type7 <- function(sorted, probs) {
+# sorted decimal vector. `quarters` gives each probability in quarters (0 to
+# 4), so `(n - 1) * p` is `(n - 1) * quarters / 4`: a whole number of quarters,
+# exact in double up to 2^53. Its whole part picks the lower element and its
+# remainder picks the interpolation weight from fixed text, so no number is
+# ever formatted and the session's `digits`, `OutDec`, `scipen` and locale
+# cannot change the result. The interpolation itself runs in decimal
+# arithmetic under the active context.
+decimal_quantile_type7 <- function(sorted, quarters) {
   n <- length(sorted)
+  weights <- c("0.25", "0.5", "0.75")
 
-  out <- lapply(probs, function(p) {
+  out <- lapply(quarters, function(q) {
     if (n == 1L) {
       return(sorted)
     }
 
-    h <- (n - 1L) * p + 1
-    lo <- floor(h)
-    weight <- h - lo
+    position <- (n - 1) * q
+    lo <- position %/% 4 + 1
+    remainder <- position %% 4
 
-    if (weight == 0) {
+    if (remainder == 0) {
       sorted[lo]
     } else {
       step <- sorted[lo + 1L] - sorted[lo]
-      sorted[lo] + decimal(format(weight, scientific = FALSE)) * step
+      sorted[lo] + decimal_from_character(weights[[remainder]]) * step
     }
   })
 
@@ -1105,22 +1130,28 @@ summary.decimal <- function(object, ..., maxsum = 100L, digits = NULL) {
   if (length(values) == 0L) {
     # `summary(numeric(0))` reports NA for the quantiles and NaN for the mean.
     out <- vctrs::vec_c(
-      NA_decimal_, NA_decimal_, NA_decimal_,
-      decimal("NaN"),
-      NA_decimal_, NA_decimal_
+      NA_decimal_,
+      NA_decimal_,
+      NA_decimal_,
+      decimal_from_character("NaN"),
+      NA_decimal_,
+      NA_decimal_
     )
   } else {
     sorted <- sort(values)
-    quartiles <- decimal_quantile_type7(sorted, c(0, 0.25, 0.5, 0.75, 1))
+    quartiles <- decimal_quantile_type7(sorted, 0:4)
     out <- vctrs::vec_c(
-      quartiles[1L], quartiles[2L], quartiles[3L],
+      quartiles[1L],
+      quartiles[2L],
+      quartiles[3L],
       mean(values),
-      quartiles[4L], quartiles[5L]
+      quartiles[4L],
+      quartiles[5L]
     )
   }
 
   if (missing_count > 0L) {
-    out <- vctrs::vec_c(out, decimal(as.character(missing_count)))
+    out <- vctrs::vec_c(out, decimal_from_integer(missing_count))
     labels <- c(labels, "NA's")
   }
 
@@ -1145,7 +1176,7 @@ log.decimal <- function(x, base = exp(1)) {
 #' @export
 round.decimal <- function(x, digits = 0) {
   digits <- decimal_scalar_digits(digits)
-  quantum <- decimal(decimal_quantum_string(-digits))
+  quantum <- decimal_from_character(decimal_quantum_string(-digits))
   decimal_quantize(x, quantum)
 }
 
@@ -1450,16 +1481,16 @@ range.decimal <- function(x, ..., na.rm = FALSE, finite = FALSE) {
     return(c(NA_decimal_, NA_decimal_))
   }
   if (prep$kind == "snan") {
-    value <- decimal_unary_math(decimal("sNaN"), "abs")
+    value <- decimal_unary_math(decimal_from_character("sNaN"), "abs")
     return(c(value, value))
   }
   if (prep$kind == "qnan") {
-    value <- decimal("NaN")
+    value <- decimal_from_character("NaN")
     return(c(value, value))
   }
   if (length(prep$x) == 0L) {
     warning("no non-missing arguments to min; returning Inf", call. = FALSE)
-    return(decimal(c("Infinity", "-Infinity")))
+    return(decimal_from_character(c("Infinity", "-Infinity")))
   }
 
   sorted <- sort(prep$x)
