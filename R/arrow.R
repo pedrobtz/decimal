@@ -300,7 +300,7 @@ decimal_from_arrow_decimal <- function(x, scale) {
     x$cast(arrow::string())
   ))
   out <- new_decimal(values, scale = x$type$scale())
-  scale <- decimal_resolve_scale(scale)
+  # The Arrow type carries a scale, so `decimal.default_scale` does not apply.
   if (is.null(scale)) {
     return(out)
   }
