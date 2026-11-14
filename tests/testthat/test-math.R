@@ -374,3 +374,255 @@ test_that("summary() tolerates the arguments summary.data.frame passes", {
   expect_identical(summary(x, maxsum = 7L), summary(x))
   expect_error(summary(x, bogus = TRUE), "`...` must be empty")
 })
+
+test_that("min(), max() and range() compare values when a decimal comes first", {
+  expect_identical(min(decimal("9"), 10L), decimal("9"))
+  expect_identical(max(decimal("10"), 2L), decimal("10"))
+  expect_identical(max(decimal(c("10", "100")), 9L), decimal("100"))
+  expect_identical(range(decimal("10"), 2L), decimal(c("2", "10")))
+  expect_identical(
+    max(decimal("9.5"), decimal(c("10", "100"))),
+    decimal("100.0")
+  )
+})
+
+# R picks the Summary method from the first argument only, so these forms
+# never reach the decimal methods. They pin today's behaviour, so that a change
+# in R or in this package is noticed (#42, #75).
+test_that("known limitation: min/max/range with a non-decimal first argument", {
+  expect_identical(min(10L, decimal("9")), "10")
+  expect_identical(max(2L, decimal("10")), "2")
+  expect_identical(max(9L, decimal(c("10", "100"))), "9")
+  expect_identical(range(2L, decimal("10")), c("10", "2"))
+
+  # Working forms.
+  expect_identical(min(decimal("9"), 10L), decimal("9"))
+  expect_identical(min(as_decimal(10L), decimal("9")), decimal("9"))
+  expect_identical(range(as_decimal(2L), decimal("10")), decimal(c("2", "10")))
+})
+
+test_that("known limitation: sum/prod with a non-decimal first argument", {
+  expect_error(sum(1L, decimal("2")), "invalid 'type' \\(character\\)")
+  expect_error(prod(2L, decimal("3")), "invalid 'type' \\(character\\)")
+
+  expect_identical(sum(decimal("2"), 1L), decimal("3"))
+  expect_identical(prod(as_decimal(2L), decimal("3")), decimal("6"))
+})
+
+test_that("known limitation: any() and all() on decimal vectors", {
+  expect_error(any(decimal("1")), "`any\\(\\)` is not implemented")
+  expect_error(all(decimal("1")), "`all\\(\\)` is not implemented")
+  expect_warning(
+    expect_identical(any(FALSE, decimal("1")), NA),
+    "coercing argument of type 'character' to logical"
+  )
+  expect_warning(
+    expect_identical(all(TRUE, decimal("1")), NA),
+    "coercing argument of type 'character' to logical"
+  )
+})
+
+test_that("is.unsorted() orders decimal values, not their text", {
+  expect_false(is.unsorted(decimal(c("9", "10"))))
+  expect_true(is.unsorted(decimal(c("10", "9"))))
+  expect_false(is.unsorted(decimal(c("-Infinity", "-2.5", "0", "Infinity"))))
+  expect_false(is.unsorted(decimal("1")))
+  expect_false(is.unsorted(decimal()))
+
+  ties <- decimal(c("1", "1.0", "2"))
+  expect_false(is.unsorted(ties))
+  expect_true(is.unsorted(ties, strictly = TRUE))
+  expect_false(is.unsorted(decimal(c("9", "10")), strictly = TRUE))
+
+  expect_identical(is.unsorted(decimal(c("9", NA, "10"))), NA)
+  expect_identical(is.unsorted(decimal(c("9", "NaN", "10"))), NA)
+  expect_false(is.unsorted(decimal(c("9", NA, "10")), na.rm = TRUE))
+  expect_true(is.unsorted(decimal(c("10", "NaN", "9")), na.rm = TRUE))
+})
+
+test_that("pmax() and pmin() return consistent decimals", {
+  x <- decimal(c("10.0", "9.0", NA))
+  y <- decimal(c("9.5", "9.5", "9.5"))
+
+  expect_identical(pmax(x, y), decimal(c("10.0", "9.5", NA)))
+  expect_identical(pmin(x, y), decimal(c("9.5", "9.0", NA)))
+  expect_identical(pmax(x, y, na.rm = TRUE), decimal(c("10.0", "9.5", "9.5")))
+  expect_identical(pmin(x, y, na.rm = TRUE), decimal(c("9.5", "9.0", "9.5")))
+  expect_identical(
+    pmax(decimal(c("1.0", "5.0", "3.0")), decimal("2.0")),
+    decimal(c("2.0", "5.0", "3.0"))
+  )
+
+  # A coarser later argument widens to the first argument's scale.
+  expect_identical(
+    pmax(decimal(c("9.5", "1.25")), decimal(c("10", "1"))),
+    decimal(c("10.00", "1.25"))
+  )
+  expect_identical(
+    pmin(decimal(c("9.5", NA)), decimal(c(NA, "10")), na.rm = TRUE),
+    decimal(c("9.5", "10.0"))
+  )
+})
+
+test_that("pmax() and pmin() refuse a later argument with a finer scale", {
+  x <- decimal(c("10", "9"))
+  y <- decimal(c("9.5", "9.5"))
+
+  # Base pmax() resets the result's attributes to the first argument's, which
+  # would label values held at scale 1 as scale 0.
+  expect_snapshot(error = TRUE, pmax(x, y))
+  expect_error(pmin(x, y), class = "decimal_parallel_extrema_scale")
+  expect_error(
+    pmax(x, decimal("1.5"), 2L),
+    class = "decimal_parallel_extrema_scale"
+  )
+  expect_identical(pmax(y, x), decimal(c("10.0", "9.5")))
+})
+
+test_that("the pmax() check catches indirect calls to base pmax()", {
+  x <- decimal(c("10", "9"))
+  y <- decimal(c("9.5", "9.5"))
+  df <- data.frame(x = x, y = y)
+  wrapper <- function(a, b) pmax(a, b)
+  cls <- "decimal_parallel_extrema_scale"
+
+  expect_error(do.call(pmax, list(x, y)), class = cls)
+  expect_error(do.call(pmin, list(x, y)), class = cls)
+  expect_error(Reduce(pmax, list(x, y)), class = cls)
+  expect_error(wrapper(x, y), class = cls)
+  expect_error(pmax(df$x, df$y), class = cls)
+  expect_error(with(df, pmin(x, y)), class = cls)
+})
+
+test_that("the pmax() check leaves other assignments alone", {
+  # A user function named pmax is not base pmax(): an ordinary assignment of a
+  # finer value still widens the vector.
+  pmax <- function(a, b) {
+    a[2] <- b
+    a
+  }
+  expect_identical(
+    pmax(decimal(c("10", "9")), decimal("9.5")),
+    decimal(c("10.0", "9.5"))
+  )
+
+  assign_second <- function(a, b) {
+    a[2] <- b
+    a
+  }
+  expect_identical(
+    assign_second(decimal(c("10", "9")), decimal("9.5")),
+    decimal(c("10.0", "9.5"))
+  )
+  expect_identical(
+    lapply(list(decimal(c("10", "9"))), assign_second, decimal("9.5"))[[1]],
+    decimal(c("10.0", "9.5"))
+  )
+  top <- decimal(c("10", "9"))
+  top[2] <- decimal("9.5")
+  expect_identical(top, decimal(c("10.0", "9.5")))
+})
+
+test_that("known limitation: a copy of base pmax() is not recognised (#75)", {
+  # The check compares the caller with `base::pmax` itself. A copy with another
+  # environment is a different function, so it gets the ordinary assignment and
+  # returns the scale mismatch: data at scale 1 under a `scale` of 0.
+  copy <- base::pmax
+  environment(copy) <- new.env(parent = baseenv())
+  out <- copy(decimal(c("10", "9")), decimal(c("9.5", "9.5")))
+  expect_identical(vctrs::vec_data(out), c("10.0", "9.5"))
+  expect_identical(attr(out, "scale"), 0L)
+})
+
+test_that("known limitation: pmax() with a non-decimal first argument (#42)", {
+  # Base `[<-` on the integer accumulator coerces to character.
+  expect_identical(pmax(2L, decimal(c("10", "1"))), c("10", "2"))
+  # Working form: a decimal first.
+  expect_identical(pmax(decimal(c("10", "1")), 2L), decimal(c("10", "2")))
+})
+
+test_that("rounding functions pass infinities and quiet NaNs through", {
+  x <- decimal(c("1.5", "Infinity", "-Infinity", "NaN", "NaN123", NA))
+  specials <- c("Infinity", "-Infinity", "NaN", "NaN123", NA)
+
+  expect_identical(floor(x), decimal(c("1", specials)))
+  expect_identical(ceiling(x), decimal(c("2", specials)))
+  expect_identical(trunc(x), decimal(c("1", specials)))
+  expect_identical(round(x), decimal(c("2", specials)))
+  expect_identical(round(x, digits = 1), decimal(c("1.5", specials)))
+  expect_identical(signif(x, digits = 1), decimal(c("2", specials)))
+
+  # Passing a special through raises no signal.
+  clear_decimal_flags()
+  only <- decimal(specials)
+  for (f in list(floor, ceiling, trunc, round, signif)) {
+    expect_identical(f(only), only)
+  }
+  expect_identical(decimal_flags(), character())
+
+  # Specials do not change the scale signif() chooses.
+  expect_identical(
+    signif(decimal(c("Infinity", "0.012345")), digits = 2),
+    decimal(c("Infinity", "0.012"))
+  )
+  expect_identical(signif(decimal("NaN")), decimal("NaN"))
+})
+
+test_that("rounding functions signal invalid_operation for a signaling NaN", {
+  x <- decimal(c("1.5", "sNaN"))
+
+  for (f in list(floor, ceiling, trunc, round, signif)) {
+    expect_error(f(x), class = "decimal_invalid_operation")
+  }
+
+  with_decimal_context(decimal_context(traps = character()), {
+    clear_decimal_flags()
+    out <- floor(x)
+    expect_true("invalid_operation" %in% decimal_flags())
+    expect_identical(is_qnan(out), c(FALSE, TRUE))
+
+    clear_decimal_flags()
+    out <- round(x)
+    expect_true("invalid_operation" %in% decimal_flags())
+    expect_identical(is_qnan(out), c(FALSE, TRUE))
+
+    clear_decimal_flags()
+    out <- signif(x, digits = 1)
+    expect_true("invalid_operation" %in% decimal_flags())
+    expect_identical(is_qnan(out), c(FALSE, TRUE))
+  })
+})
+
+test_that("a quantize trap on a special value does not blame the precision", {
+  expect_snapshot(error = TRUE, round(decimal("sNaN")))
+  expect_snapshot(error = TRUE, quantize(decimal("Infinity"), decimal("1")))
+})
+
+test_that("mean() trims like base R", {
+  values <- c("-5", "1", "2", "3", "4", "7", "8.5", "100")
+  x <- decimal(values)
+  for (trim in c(0, 0.1, 0.125, 0.2, 0.25, 0.375, 0.49, 0.5, 0.7, -1)) {
+    # Every expected mean here is exact in binary, so it converts losslessly.
+    expected <- decimal(as.character(mean(as.double(values), trim = trim)))
+    expect_true(mean(x, trim = trim) == expected)
+  }
+
+  four <- decimal(c("1", "2", "3", "100"))
+  expect_identical(mean(four, trim = 0.25), decimal("2.5"))
+  # A trim of 0.5 or more gives the median.
+  expect_identical(mean(four, trim = 0.5), decimal("2.5"))
+  expect_identical(mean(decimal(c("1", "2", "100")), trim = 0.5), decimal("2"))
+  # Exact where a double is not.
+  expect_identical(
+    mean(decimal(c("0.1", "0.2", "0.3", "1E+20")), trim = 0.25),
+    decimal("0.25")
+  )
+
+  y <- decimal(c("1", NA, "2", "3", "100"))
+  expect_identical(mean(y, trim = 0.25), NA_decimal_)
+  expect_identical(mean(y, trim = 0.25, na.rm = TRUE), decimal("2.5"))
+  expect_identical(mean(decimal(), trim = 0.25), decimal("NaN"))
+
+  expect_error(mean(x, trim = c(0.1, 0.2)), "`trim` must be a number")
+  expect_error(mean(x, trim = "a"), "`trim` must be a number")
+})
