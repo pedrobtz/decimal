@@ -31,6 +31,10 @@ API grouping.
   padding; an explicit coarser scale is a quantization request.
 - Double conversion decodes the exact IEEE 754 value, requires an explicit
   `scale` or `options(decimal.default_scale = )`, and then quantizes.
+- `decimal.default_scale` applies only to user calls of `decimal()` and
+  `as_decimal()` on non-decimal input. Internal conversions (integer
+  operands, quantums, counts, constants) use `decimal_from_character()` and
+  `decimal_from_integer()`, which never read it, and never format a double.
 - Scale is a vector property. Combining or assigning decimals promotes to a
   common scale without consulting the arithmetic context.
 - Context affects operations and explicit scale reduction, not exact parsing

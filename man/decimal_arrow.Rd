@@ -35,10 +35,38 @@ refuses to format such an object. Read those tables with
 \code{\link[=arrow_as_data_frame]{arrow_as_data_frame()}}.
 
 Infinities and NaNs have no Arrow decimal representation and raise an error
-on conversion to Arrow. Arrow accepts a negative scale but Parquet does not,
-so rescale such a vector with \code{as_decimal(x, scale = 0)} before
-\code{arrow::write_parquet()}.
+on conversion to Arrow. A value wider than a pinned type raises an error of
+class \code{decimal_arrow_precision_error}, never a rounded or wrapped value.
+Negative zero has no Arrow representation either and becomes zero: \code{-0.00}
+reads back as \code{0.00}.
+
+Arrow accepts a negative scale but Parquet does not, so a vector with a
+negative scale is written at scale 0, which holds the same values exactly,
+and reads back with scale 0. A negative scale pinned through \code{type} is kept
+in memory, but \code{arrow::write_parquet()} rejects such a column only after it
+has opened, and so emptied, the destination file; the same holds for a
+table already carrying a decimal field whose scale exceeds its precision.
 }
+\section{Known issue}{
+ combining columns of different types:
+Combining decimal extension columns that arrow typed differently, with
+different scales or storage widths, can silently misread values (#37).
+This includes \code{arrow::concat_arrays()}, \code{arrow::concat_tables()} and
+\code{arrow::open_dataset()} over parts written separately, followed by
+\code{collect()} or \code{arrange()}. arrow compares two of this package's extension
+types by name alone, so it can reinterpret one part's stored integers at
+the other part's scale: 3.125 reads back as 31.25.
+
+\strong{Workaround:} pin one type with \code{\link[=arrow_decimal_type]{arrow_decimal_type()}} for every part
+that will be appended or combined.
+
+The package checks every chunk it converts and raises an error of class
+\code{decimal_arrow_chunk_error} for a column whose chunks differ in scale or
+width. Chunks that differ only in precision are combined exactly. A misread
+that arrow's own kernels have already produced, as in
+\code{arrow::concat_arrays()}, cannot be detected.
+}
+
 \section{Options}{
 
 \code{decimal.arrow_extension}: \code{TRUE} (the default) writes the extension type;

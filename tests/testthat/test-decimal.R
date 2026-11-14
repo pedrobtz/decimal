@@ -94,9 +94,10 @@ test_that("decimal.default_scale supplies an opt-in conversion scale", {
   expect_identical(decimal_from_double(0.002), decimal("0.0020000", scale = 7L))
   expect_identical(as_decimal("1.2"), decimal("1.2000000", scale = 7L))
   expect_identical(as_decimal(1L), decimal("1.0000000", scale = 7L))
+  # A decimal vector already has a scale; the option does not change it.
   expect_identical(
     as_decimal(decimal("1.2", scale = 1L)),
-    decimal("1.2000000", scale = 7L)
+    decimal("1.2", scale = 1L)
   )
   expect_identical(
     as_decimal(0.002, scale = 3L),

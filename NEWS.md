@@ -1,5 +1,18 @@
 # decimal (development version)
 
+## Known issues
+
+- Combining decimal Arrow columns of different scales or storage widths can
+  silently misread values: 3.125 can come back as 31.25. This affects
+  `arrow::concat_arrays()`, `arrow::concat_tables()` and
+  `arrow::open_dataset()` over parts written separately, followed by
+  `collect()` or `arrange()`, because arrow compares this package's extension
+  types by name alone. Until this is fixed, pin one type with
+  `arrow_decimal_type()` for every part that will be appended or combined
+  (#37).
+
+## Bug fixes
+
 - `as.double()` and casts to double are now correctly rounded. They went
   through R's internal string parser, which can be off by one unit in the
   last place (`decimal("83E25")`, `decimal("1e23", scale = 15)`), returned
@@ -23,9 +36,61 @@
   argument and raise an error for a malformed one, instead of crashing R when
   called directly through `.Call()` with a zero-length vector (#41).
 
+- Converting an Arrow column whose chunks carry different decimal storage now
+  checks every chunk. Chunks that differ only in precision, such as dataset
+  parts whose values had different magnitudes, now combine exactly, where
+  arrow used to fail with "Array chunks must all be same type". Chunks that
+  differ in scale or width raise an error of class
+  `decimal_arrow_chunk_error` instead of being misread (#37).
+
 - The bundled 'mpdecimal' now builds for WebAssembly (webR). Its configuration
   did not recognise the `wasm32` target and stopped with "unsupported
   platform".
+
+- `options(decimal.default_scale = )` no longer leaks into the package's own
+  conversions (#43). It is the default scale for `decimal()` and
+  `as_decimal()` on character, integer and double input, but integer operands,
+  rounding quantums, counts and constants picked it up too. Under
+  `default_scale = 2`, `round(x, 3)` and `quantize(x, "0.001")` returned two
+  digits and `x * 3L` gained two extra; under `default_scale = -2`, `x + 150L`
+  added 200, `x * 3L` gave 0, `mean(x)` trapped `division_by_zero` and
+  `summary()` reported no missing values; under `default_scale = 0`,
+  `summary()` quartiles were wrong. Integers and character operands now
+  convert exactly at the scale their value gives.
+
+- `as_decimal()` on a `decimal` vector without `scale` now returns it
+  unchanged, rather than rescaling it to `decimal.default_scale`. Arrow
+  decimal arrays likewise keep the scale of their Arrow type under that
+  option, in `as_decimal()`, `arrow_as_data_frame()`, `as.data.frame()` and
+  `arrow::read_parquet()`; before, with `default_scale = 1`, 1.25 and 2.75 read
+  back as 1.2 and 2.8 (#43).
+
+- `summary()` quartiles no longer depend on `options(digits)`, `OutDec`,
+  `scipen` or the numeric locale (#44). The interpolation weight was built by
+  formatting a double, so `options(digits = 1)` gave a 1st quartile of 1.8 for
+  `c(1, 2, 4, 7.1)` instead of 1.75, and `OutDec = ","` raised an error. The
+  weight is now chosen from exact text.
+
+- `arrow::as_arrow_array()` now refuses a value wider than a pinned decimal
+  type with an error of class `decimal_arrow_precision_error`, naming the
+  digits the value needs and the type's precision. Arrow's own cast silently
+  wrapped a value too wide for the type's integer width: 39 nines pinned to
+  `decimal128(38, 0)` became a negative number, and `2^128 + 7` pinned to
+  `decimal128(5, 0)` became 7 (#38).
+
+- A `decimal` vector with a negative scale is now written to Arrow at storage
+  scale 0, which Parquet accepts and which holds the same values exactly; it
+  reads back with scale 0, not its original negative scale. Before,
+  `arrow::write_parquet()` and `arrow::write_dataset()` rejected the column
+  only after opening the destination, emptying an existing file or leaving a
+  0-byte part. `arrow_decimal_type()` now validates its arguments and refuses
+  a scale above the precision, which Parquet rejects the same way. A table
+  that already holds such a field can still empty the destination file,
+  because arrow opens it before checking; this is documented in
+  `?decimal_arrow` (#39).
+
+- Documented that negative zero loses its sign through Arrow: an Arrow decimal
+  has a single zero, so `-0.00` reads back as `0.00` (#40).
 
 # decimal 0.1.1
 
