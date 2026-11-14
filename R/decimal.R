@@ -284,6 +284,34 @@ decimal_unary_math <- function(x, op, scale = NULL) {
   decimal_new_result(raw, target, names(x))
 }
 
+# Infinities and quiet NaNs are already integral, so the rounding functions
+# return them unchanged, as base R and Python's `to_integral_value()` do.
+# mpdecimal's floor, ceiling and trunc reject every special value, and
+# quantizing an infinity is invalid, so these elements skip the kernel. A
+# signaling NaN still reaches it and raises `invalid_operation`.
+decimal_pass_specials <- function(values, kernel) {
+  pass <- .decimal_predicate_strings(values, "infinite") |
+    .decimal_predicate_strings(values, "qnan")
+  if (!any(pass)) {
+    return(kernel(values))
+  }
+
+  input <- values
+  input[pass] <- "0"
+  out <- kernel(input)
+  out[pass] <- values[pass]
+  out
+}
+
+decimal_round_integral <- function(x, op) {
+  x <- decimal_math_input(x)
+  raw <- decimal_pass_specials(
+    vctrs::vec_data(x),
+    \(values) .decimal_math_op_strings(values, op)
+  )
+  decimal_new_result(raw, 0L, names(x))
+}
+
 decimal_quantum_string <- function(exponent) {
   ifelse(exponent >= 0L, paste0("1E+", exponent), paste0("1E", exponent))
 }
@@ -939,9 +967,9 @@ vec_math.decimal <- function(.fn, .x, ...) {
     abs = decimal_unary_math(.x, "abs"),
     sign = decimal_unary_math(.x, "sign", scale = 0L),
     sqrt = decimal_unary_math(.x, "sqrt"),
-    floor = decimal_unary_math(.x, "floor", scale = 0L),
-    ceiling = decimal_unary_math(.x, "ceiling", scale = 0L),
-    trunc = decimal_unary_math(.x, "trunc", scale = 0L),
+    floor = decimal_round_integral(.x, "floor"),
+    ceiling = decimal_round_integral(.x, "ceiling"),
+    trunc = decimal_round_integral(.x, "trunc"),
     exp = decimal_unary_math(.x, "exp"),
     log10 = decimal_unary_math(.x, "log10"),
     log = log.decimal(.x, ...),
@@ -1145,8 +1173,12 @@ log.decimal <- function(x, base = exp(1)) {
 #' @export
 round.decimal <- function(x, digits = 0) {
   digits <- decimal_scalar_digits(digits)
-  quantum <- decimal(decimal_quantum_string(-digits))
-  decimal_quantize(x, quantum)
+  x <- decimal_math_input(x)
+  quantum <- decimal_quantum_string(-digits)
+  raw <- decimal_pass_specials(vctrs::vec_data(x), function(values) {
+    .decimal_quantize_strings(values, rep_len(quantum, length(values)))
+  })
+  decimal_restore_names(new_decimal(raw, scale = digits), names(x))
 }
 
 #' @export
@@ -1155,17 +1187,18 @@ signif.decimal <- function(x, digits = 6) {
   x <- decimal_math_input(x)
   adj <- adjusted(x)
   exponents <- ifelse(is.na(adj), NA_integer_, adj - digits + 1L)
-  quantum <- ifelse(
-    is.na(exponents),
-    NA_character_,
-    decimal_quantum_string(exponents)
-  )
+  # Special values have no adjusted exponent. Any quantum lets a signaling NaN
+  # raise `invalid_operation`; infinities and quiet NaNs skip the kernel.
+  quantum <- ifelse(is.na(exponents), "1", decimal_quantum_string(exponents))
 
   # `signif()` targets a per-element exponent (each element keeps `digits`
   # significant digits), which is incompatible with one shared vector scale.
   # Quantize per element first, then uniformly rescale to the coarsest scale
   # that keeps every element's requested precision.
-  raw <- .decimal_quantize_strings(vctrs::vec_data(x), quantum)
+  raw <- decimal_pass_specials(
+    vctrs::vec_data(x),
+    \(values) .decimal_quantize_strings(values, quantum)
+  )
   target_scale <- if (all(is.na(exponents))) {
     decimal_scale(x)
   } else {

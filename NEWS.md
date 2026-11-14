@@ -4,6 +4,13 @@
   did not recognise the `wasm32` target and stopped with "unsupported
   platform".
 
+- `floor()`, `ceiling()`, `trunc()`, `round()` and `signif()` now return
+  infinities and quiet NaNs unchanged, payload included, and raise no signal,
+  as base R and Python's `Decimal.to_integral_value()` do (#49). `signif()`
+  turned them into `NA`, and the others trapped `invalid_operation`. A
+  signaling NaN still raises `invalid_operation`. A `quantize()` trap on a
+  special value no longer suggests raising the context precision.
+
 # decimal 0.1.1
 
 - `decimal` vectors now convert to and from 'Arrow' decimal arrays directly.

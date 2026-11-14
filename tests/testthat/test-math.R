@@ -284,3 +284,60 @@ test_that("summary() tolerates the arguments summary.data.frame passes", {
   expect_identical(summary(x, maxsum = 7L), summary(x))
   expect_error(summary(x, bogus = TRUE), "`...` must be empty")
 })
+
+test_that("rounding functions pass infinities and quiet NaNs through", {
+  x <- decimal(c("1.5", "Infinity", "-Infinity", "NaN", "NaN123", NA))
+  specials <- c("Infinity", "-Infinity", "NaN", "NaN123", NA)
+
+  expect_identical(floor(x), decimal(c("1", specials)))
+  expect_identical(ceiling(x), decimal(c("2", specials)))
+  expect_identical(trunc(x), decimal(c("1", specials)))
+  expect_identical(round(x), decimal(c("2", specials)))
+  expect_identical(round(x, digits = 1), decimal(c("1.5", specials)))
+  expect_identical(signif(x, digits = 1), decimal(c("2", specials)))
+
+  # Passing a special through raises no signal.
+  clear_decimal_flags()
+  only <- decimal(specials)
+  for (f in list(floor, ceiling, trunc, round, signif)) {
+    expect_identical(f(only), only)
+  }
+  expect_identical(decimal_flags(), character())
+
+  # Specials do not change the scale signif() chooses.
+  expect_identical(
+    signif(decimal(c("Infinity", "0.012345")), digits = 2),
+    decimal(c("Infinity", "0.012"))
+  )
+  expect_identical(signif(decimal("NaN")), decimal("NaN"))
+})
+
+test_that("rounding functions signal invalid_operation for a signaling NaN", {
+  x <- decimal(c("1.5", "sNaN"))
+
+  for (f in list(floor, ceiling, trunc, round, signif)) {
+    expect_error(f(x), class = "decimal_invalid_operation")
+  }
+
+  with_decimal_context(decimal_context(traps = character()), {
+    clear_decimal_flags()
+    out <- floor(x)
+    expect_true("invalid_operation" %in% decimal_flags())
+    expect_identical(is_qnan(out), c(FALSE, TRUE))
+
+    clear_decimal_flags()
+    out <- round(x)
+    expect_true("invalid_operation" %in% decimal_flags())
+    expect_identical(is_qnan(out), c(FALSE, TRUE))
+
+    clear_decimal_flags()
+    out <- signif(x, digits = 1)
+    expect_true("invalid_operation" %in% decimal_flags())
+    expect_identical(is_qnan(out), c(FALSE, TRUE))
+  })
+})
+
+test_that("a quantize trap on a special value does not blame the precision", {
+  expect_snapshot(error = TRUE, round(decimal("sNaN")))
+  expect_snapshot(error = TRUE, quantize(decimal("Infinity"), decimal("1")))
+})

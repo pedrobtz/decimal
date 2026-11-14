@@ -1,4 +1,4 @@
-decimal_native_result <- function(result, op) {
+decimal_native_result <- function(result, op, operands = list()) {
   decimal_update_flags(result$flags)
 
   if (!is.na(result$trap_signal)) {
@@ -12,7 +12,14 @@ decimal_native_result <- function(result, op) {
       "."
     )
     rlang::abort(
-      message = c(header, decimal_trap_hint(op, result$trap_signal)),
+      message = c(
+        header,
+        decimal_trap_hint(
+          op,
+          result$trap_signal,
+          lapply(operands, `[`, result$trap_index)
+        )
+      ),
       class = c(
         paste0("decimal_", result$trap_signal),
         "decimal_trap",
@@ -94,8 +101,23 @@ decimal_expected_signals <- function(op) {
 # Explain *why* a trap fired, since the raw GDA signal name alone rarely tells
 # the caller what to change. Returns a named character vector of rlang bullets
 # (or NULL when we have nothing more specific to add than the signal itself).
-decimal_trap_hint <- function(op, signal) {
+#
+# `operands` holds the operation's inputs at the trapped element.
+decimal_trap_hint <- function(op, signal, operands = list()) {
   if (identical(op, "quantize") && identical(signal, "invalid_operation")) {
+    values <- as.character(unlist(operands))
+    if (any(.decimal_predicate_strings(values, "snan"))) {
+      return(c(i = "A signaling NaN raises `invalid_operation` when used."))
+    }
+    if (any(.decimal_predicate_strings(values, "infinite"))) {
+      return(c(
+        i = paste0(
+          "Quantizing an infinity to a finite quantum, or a finite value to ",
+          "an infinite quantum, is an invalid operation."
+        )
+      ))
+    }
+
     precision <- get_decimal_context()$precision
     return(c(
       i = paste0(
@@ -198,7 +220,8 @@ decimal_context_call <- function(fun, ...) {
 .decimal_quantize_strings <- function(x, y) {
   decimal_native_result(
     decimal_context_call(.Call, decimal_c_quantize_strings, x, y),
-    op = "quantize"
+    op = "quantize",
+    operands = list(x, y)
   )
 }
 
