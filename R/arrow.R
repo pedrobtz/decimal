@@ -47,9 +47,17 @@
 #' [arrow_as_data_frame()].
 #'
 #' Infinities and NaNs have no Arrow decimal representation and raise an error
-#' on conversion to Arrow. Arrow accepts a negative scale but Parquet does not,
-#' so rescale such a vector with `as_decimal(x, scale = 0)` before
-#' `arrow::write_parquet()`.
+#' on conversion to Arrow. A value wider than a pinned type raises an error of
+#' class `decimal_arrow_precision_error`, never a rounded or wrapped value.
+#' Negative zero has no Arrow representation either and becomes zero: `-0.00`
+#' reads back as `0.00`.
+#'
+#' Arrow accepts a negative scale but Parquet does not, so a vector with a
+#' negative scale is written at scale 0, which holds the same values exactly,
+#' and reads back with scale 0. A negative scale pinned through `type` is kept
+#' in memory, but `arrow::write_parquet()` rejects such a column only after it
+#' has opened, and so emptied, the destination file; the same holds for a
+#' table already carrying a decimal field whose scale exceeds its precision.
 #'
 #' @section Options:
 #' `decimal.arrow_extension`: `TRUE` (the default) writes the extension type;
@@ -160,8 +168,9 @@ decimal_arrow_storage <- function(x) {
 #' `arrow::decimal128()` up to 38 digits of precision and
 #' `arrow::decimal256()` above that.
 #'
-#' @param precision Total number of digits, at most 76.
-#' @param scale Number of fractional digits.
+#' @param precision Total number of digits, from 1 to 76.
+#' @param scale Number of fractional digits, at most `precision`. A negative
+#'   scale is accepted for in-memory use, but Parquet cannot store it.
 #'
 #' @return An Arrow extension type.
 #' @seealso [decimal_arrow] for how the type behaves.
@@ -173,6 +182,28 @@ decimal_arrow_storage <- function(x) {
 #' @export
 arrow_decimal_type <- function(precision, scale = 0L) {
   decimal_check_arrow()
+  if (!rlang::is_scalar_integerish(precision) || precision < 1L) {
+    decimal_arrow_abort("`precision` must be a whole number from 1 to 76.")
+  }
+  if (precision > 76L) {
+    decimal_arrow_abort(paste0(
+      "`precision` is ",
+      precision,
+      ", more than the 76 digits `arrow::decimal256()` allows."
+    ))
+  }
+  if (!rlang::is_scalar_integerish(scale)) {
+    decimal_arrow_abort("`scale` must be a whole number.")
+  }
+  if (scale > precision) {
+    decimal_arrow_abort(paste0(
+      "`scale` (",
+      scale,
+      ") must not exceed `precision` (",
+      precision,
+      "); Parquet rejects such a type."
+    ))
+  }
   storage <- if (precision <= 38L) {
     arrow::decimal128(precision, scale)
   } else {
@@ -229,11 +260,25 @@ as_decimal.ChunkedArray <- function(x, scale = NULL) {
 
 # Decimal to Arrow ---------------------------------------------------------
 
+decimal_arrow_abort <- function(
+  message,
+  class = NULL,
+  ...,
+  call = rlang::caller_env()
+) {
+  rlang::abort(
+    message,
+    class = c(class, "decimal_arrow_error"),
+    ...,
+    call = call
+  )
+}
+
 decimal_arrow_check_representable <- function(x) {
   special <- is.infinite(x) | is.nan(x)
   if (any(special)) {
     first <- which(special)[1L]
-    rlang::abort(paste0(
+    decimal_arrow_abort(paste0(
       "Arrow decimal types cannot represent infinities or NaNs; element ",
       first,
       " is `",
@@ -244,28 +289,74 @@ decimal_arrow_check_representable <- function(x) {
   invisible(x)
 }
 
+# The digits the widest value of `x` needs at `scale`, or `NA` when every
+# value is missing.
+decimal_arrow_digits <- function(x, scale) {
+  adj <- adjusted(x)
+  if (all(is.na(adj))) {
+    return(NA_integer_)
+  }
+  as.integer(max(adj, na.rm = TRUE) + 1L + scale)
+}
+
+# The storage scale for `x`: its own, except that a negative scale is written
+# as 0. Arrow accepts a negative scale but Parquet does not, and
+# `arrow::write_parquet()` only finds out after it has truncated the file.
+decimal_arrow_scale <- function(x) {
+  max(decimal_scale(x), 0L)
+}
+
 # The digits the widest value needs, but never fewer than the scale: Arrow
 # accepts `decimal128(1, 2)` for 0.05, while Parquet rejects any decimal whose
 # scale exceeds its precision.
 decimal_arrow_precision <- function(x) {
-  scale <- decimal_scale(x)
-  adj <- adjusted(x)
-  digits <- if (all(is.na(adj))) 1L else max(adj, na.rm = TRUE) + 1L + scale
-  max(digits, scale, 1L)
+  scale <- decimal_arrow_scale(x)
+  digits <- decimal_arrow_digits(x, scale)
+  max(digits, scale, 1L, na.rm = TRUE)
+}
+
+# Arrow's cast checks the precision only while a value fits the type's width
+# and silently wraps one that does not, so check every value first.
+decimal_arrow_check_precision <- function(
+  x,
+  storage,
+  call = rlang::caller_env()
+) {
+  digits <- decimal_arrow_digits(x, storage$scale())
+  if (is.na(digits) || digits <= storage$precision()) {
+    return(invisible(x))
+  }
+  decimal_arrow_abort(
+    paste0(
+      "`x` needs ",
+      digits,
+      " digits of precision at scale ",
+      storage$scale(),
+      ", more than the ",
+      storage$precision(),
+      " of `",
+      storage$ToString(),
+      "`."
+    ),
+    class = "decimal_arrow_precision_error",
+    digits = digits,
+    type = storage$ToString(),
+    call = call
+  )
 }
 
 # The plain Arrow decimal type that holds every value of `x`.
 decimal_arrow_storage_type <- function(x) {
   decimal_arrow_check_representable(x)
   precision <- decimal_arrow_precision(x)
-  scale <- decimal_scale(x)
+  scale <- decimal_arrow_scale(x)
   if (precision <= 38L) {
     return(arrow::decimal128(precision, scale))
   }
   if (precision <= 76L) {
     return(arrow::decimal256(precision, scale))
   }
-  rlang::abort(paste0(
+  decimal_arrow_abort(paste0(
     "`x` needs ",
     precision,
     " digits of precision, more than the 76 digits `arrow::decimal256()` ",
@@ -300,6 +391,7 @@ as_arrow_array.decimal <- function(x, ..., type = NULL) {
   }
   if (decimal_is_arrow_decimal(storage)) {
     decimal_arrow_check_representable(x)
+    decimal_arrow_check_precision(x, storage)
   }
   out <- arrow::Array$create(vctrs::vec_data(x))$cast(storage)
   if (decimal_is_arrow_extension(type)) {

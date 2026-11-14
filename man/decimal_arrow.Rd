@@ -35,9 +35,17 @@ refuses to format such an object. Read those tables with
 \code{\link[=arrow_as_data_frame]{arrow_as_data_frame()}}.
 
 Infinities and NaNs have no Arrow decimal representation and raise an error
-on conversion to Arrow. Arrow accepts a negative scale but Parquet does not,
-so rescale such a vector with \code{as_decimal(x, scale = 0)} before
-\code{arrow::write_parquet()}.
+on conversion to Arrow. A value wider than a pinned type raises an error of
+class \code{decimal_arrow_precision_error}, never a rounded or wrapped value.
+Negative zero has no Arrow representation either and becomes zero: \code{-0.00}
+reads back as \code{0.00}.
+
+Arrow accepts a negative scale but Parquet does not, so a vector with a
+negative scale is written at scale 0, which holds the same values exactly,
+and reads back with scale 0. A negative scale pinned through \code{type} is kept
+in memory, but \code{arrow::write_parquet()} rejects such a column only after it
+has opened, and so emptied, the destination file; the same holds for a
+table already carrying a decimal field whose scale exceeds its precision.
 }
 \section{Options}{
 

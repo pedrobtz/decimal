@@ -433,6 +433,177 @@ test_that("a reader without the extension registered sees the plain decimal", {
   expect_type(arrow::read_parquet(path)$amount, "double")
 })
 
+# Compatibility -------------------------------------------------------------
+
+test_that("files written by decimal 0.1.1 read back exactly", {
+  skip_if_no_parquet()
+
+  # Made by fixtures/make-0.1.1-arrow.R with the released 0.1.1, whose
+  # extension type carried empty metadata.
+  expected <- data.frame(id = 1:3)
+  expected$amount <- decimal(c("100.05", NA, "-99999999999999999999.99"))
+  expected$rate <- decimal(c("0.0350", "1.2500", NA))
+  expected$wide <- decimal(c(paste0(strrep("9", 45), ".5"), "-0.1", NA))
+
+  parquet <- test_path("fixtures", "decimal-0.1.1.parquet")
+  ipc <- test_path("fixtures", "decimal-0.1.1.arrow")
+  expect_identical(as.data.frame(arrow::read_parquet(parquet)), expected)
+  expect_identical(as.data.frame(arrow::read_ipc_file(ipc)), expected)
+
+  old <- arrow::read_parquet(parquet, as_data_frame = FALSE)$amount
+  expect_identical(old$type$extension_metadata_utf8(), "")
+  expect_identical(as_decimal(old), expected$amount)
+
+  # An old column still appends to a new one of the same storage.
+  new <- arrow::as_arrow_array(
+    decimal("1.25"),
+    type = arrow_decimal_type(22, 2)
+  )
+  expect_true(old$type$Equals(new$type))
+  expect_identical(
+    as.vector(arrow::concat_arrays(old$chunk(0), new)),
+    c(expected$amount, decimal("1.25"))
+  )
+})
+
+# Pinned types --------------------------------------------------------------
+
+test_that("a pinned type narrower than the values errors instead of wrapping", {
+  skip_if_not_installed("arrow")
+
+  # 2^bits + 7 overflows each width, which Arrow's cast wrapped to 7.
+  cases <- list(
+    list("4294967303", arrow::decimal32(9, 0)),
+    list("18446744073709551623", arrow::decimal64(18, 0)),
+    list(
+      "340282366920938463463374607431768211463",
+      arrow::decimal128(38, 0)
+    ),
+    list(
+      "340282366920938463463374607431768211463",
+      arrow::decimal128(5, 0)
+    ),
+    list(
+      paste0(
+        "11579208923731619542357098500868790785326998466564",
+        "0564039457584007913129639943"
+      ),
+      arrow::decimal256(76, 0)
+    ),
+    list(strrep("9", 39), arrow::decimal128(38, 0)),
+    list(strrep("9", 39), arrow_decimal_type(38, 0)),
+    list(strrep("9", 77), arrow_decimal_type(76, 0))
+  )
+  for (case in cases) {
+    expect_error(
+      arrow::as_arrow_array(decimal(c("1", NA, case[[1]])), type = case[[2]]),
+      class = "decimal_arrow_precision_error"
+    )
+  }
+
+  # The target scale counts: 1.25 needs five digits at scale 4.
+  expect_error(
+    arrow::as_arrow_array(decimal("1.25"), type = arrow::decimal128(4, 4)),
+    class = "decimal_arrow_precision_error"
+  )
+  expect_snapshot(
+    arrow::as_arrow_array(
+      decimal(strrep("9", 39)),
+      type = arrow_decimal_type(38, 0)
+    ),
+    error = TRUE
+  )
+
+  # Values that fit still convert, at every width.
+  fits <- decimal(c("-999999999", NA, "0"))
+  for (type in list(
+    arrow::decimal32(9, 0),
+    arrow::decimal64(9, 0),
+    arrow::decimal128(9, 0),
+    arrow::decimal256(9, 0)
+  )) {
+    expect_identical(as_decimal(arrow::as_arrow_array(fits, type = type)), fits)
+  }
+})
+
+test_that("arrow_decimal_type() rejects a scale above the precision", {
+  skip_if_not_installed("arrow")
+
+  expect_snapshot(arrow_decimal_type(1, 2), error = TRUE)
+  expect_error(arrow_decimal_type(0, 0), class = "decimal_arrow_error")
+  expect_error(arrow_decimal_type(77, 0), class = "decimal_arrow_error")
+})
+
+# Writing files -------------------------------------------------------------
+
+test_that("a negative scale writes to Parquet at scale 0", {
+  skip_if_no_parquet()
+
+  x <- decimal(c("1e3", NA, "-2e3"))
+  expect_identical(decimal_scale(x), -3L)
+  expect_identical(
+    arrow::infer_type(x)$storage_type()$ToString(),
+    "decimal128(4, 0)"
+  )
+
+  path <- withr::local_tempfile(fileext = ".parquet")
+  arrow::write_parquet(data.frame(id = 1:3, x = x), path)
+  expect_identical(arrow::read_parquet(path)$x, as_decimal(x, scale = 0))
+
+  # A pinned negative scale is still honoured in memory.
+  pinned <- arrow::as_arrow_array(x, type = arrow_decimal_type(1, -3))
+  expect_identical(pinned$type$storage_type()$ToString(), "decimal128(1, -3)")
+  expect_identical(as.vector(pinned), x)
+})
+
+test_that("a failed write leaves an existing Parquet file untouched", {
+  skip_if_no_parquet()
+
+  path <- withr::local_tempfile(fileext = ".parquet")
+  arrow::write_parquet(data.frame(x = decimal("1.25")), path)
+  before <- unname(tools::md5sum(path))
+
+  expect_error(arrow::write_parquet(data.frame(x = decimal("Inf")), path))
+  expect_error(
+    arrow::write_parquet(data.frame(x = decimal(strrep("9", 90))), path)
+  )
+  expect_identical(unname(tools::md5sum(path)), before)
+  expect_identical(arrow::read_parquet(path)$x, decimal("1.25"))
+
+  # A negative scale used to fail only once the file had been truncated.
+  arrow::write_parquet(data.frame(x = decimal("1e3")), path)
+  expect_identical(arrow::read_parquet(path)$x, decimal("1000"))
+})
+
+test_that("write_dataset() leaves no empty part for a negative scale", {
+  skip_if_no_dataset()
+  skip_if_not_installed("dplyr")
+
+  dir <- withr::local_tempdir()
+  df <- data.frame(id = 1:2)
+  df$x <- decimal(c("1e3", "2e3"))
+  arrow::write_dataset(df, dir)
+
+  parts <- list.files(dir, full.names = TRUE, recursive = TRUE)
+  expect_length(parts, 1L)
+  expect_gt(file.size(parts), 0)
+  scanned <- arrow::Scanner$create(arrow::open_dataset(dir))$ToTable()
+  expect_identical(as.data.frame(scanned)$x, decimal(c("1000", "2000")))
+})
+
+# Unrepresentable values ----------------------------------------------------
+
+test_that("negative zero loses its sign through Arrow", {
+  skip_if_not_installed("arrow")
+
+  x <- decimal(c("-0.00", "1.25"))
+  expect_identical(as.character(x)[1L], "-0.00")
+  expect_identical(
+    as.vector(arrow::as_arrow_array(x)),
+    decimal(c("0.00", "1.25"))
+  )
+})
+
 # Tables --------------------------------------------------------------------
 
 test_that("arrow_as_data_frame() reads plain fields exactly, the rest via arrow", {

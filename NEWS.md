@@ -4,6 +4,26 @@
   did not recognise the `wasm32` target and stopped with "unsupported
   platform".
 
+- `arrow::as_arrow_array()` now refuses a value wider than a pinned decimal
+  type with an error of class `decimal_arrow_precision_error`, naming the
+  digits the value needs and the type's precision. Arrow's own cast silently
+  wrapped a value too wide for the type's integer width: 39 nines pinned to
+  `decimal128(38, 0)` became a negative number, and `2^128 + 7` pinned to
+  `decimal128(5, 0)` became 7 (#38).
+
+- A `decimal` vector with a negative scale is now written to Arrow at scale 0,
+  which Parquet accepts and which holds the same values exactly. Before,
+  `arrow::write_parquet()` and `arrow::write_dataset()` rejected the column
+  only after opening the destination, emptying an existing file or leaving a
+  0-byte part. `arrow_decimal_type()` now validates its arguments and refuses
+  a scale above the precision, which Parquet rejects the same way. A table
+  that already holds such a field can still empty the destination file,
+  because arrow opens it before checking; this is documented in
+  `?decimal_arrow` (#39).
+
+- Documented that negative zero loses its sign through Arrow: an Arrow decimal
+  has a single zero, so `-0.00` reads back as `0.00` (#40).
+
 # decimal 0.1.1
 
 - `decimal` vectors now convert to and from 'Arrow' decimal arrays directly.
