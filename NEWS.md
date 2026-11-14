@@ -1,4 +1,4 @@
-# decimal (development version)
+# decimal 0.1.2
 
 ## Known issues
 
@@ -10,6 +10,35 @@
   types by name alone. Until this is fixed, pin one type with
   `arrow_decimal_type()` for every part that will be appended or combined
   (#37).
+
+## Behaviour changes
+
+- `as_decimal()` on a `decimal` vector without `scale` now returns it
+  unchanged, rather than rescaling it to `decimal.default_scale`. Arrow
+  decimal arrays likewise keep the scale of their Arrow type under that
+  option, in `as_decimal()`, `arrow_as_data_frame()`, `as.data.frame()` and
+  `arrow::read_parquet()`; before, with `default_scale = 1`, 1.25 and 2.75 read
+  back as 1.2 and 2.8 (#43).
+
+- `vctrs::vec_cast()` from a decimal to a coarser decimal
+  type is now a lossy cast. When rounding would change a value it raises an
+  error of class `vctrs_error_cast_lossy`, which `vctrs::allow_lossy_cast()`
+  turns back into rounding; before, `vec_cast(decimal("1.55"),
+  decimal("1.0"))` silently gave 1.6. Dropping trailing zeros, `NA` and
+  special values still casts. This reaches functions that cast a replacement
+  to an existing column: `tidyr::replace_na(decimal(c(NA, "1.5")),
+  decimal("0.125"))` now errors rather than filling in 0.1. Combining vectors
+  of different scales (`c()`, `vec_c()`, `rbind()`, `dplyr::bind_rows()`,
+  `dplyr::if_else()`, `dplyr::coalesce()`) still takes the finer scale, and
+  `as_decimal(x, scale = )` still rounds on request (#50).
+
+- `vctrs::vec_cast()` from character to a decimal type now
+  uses that type's scale (#51). `vec_c("1.123", "2", .ptype = decimal("1.0"))`
+  used to return a vector labelled scale 1 that stored "1.123" and "2"
+  unchanged. Text with fewer digits is padded exactly; text that would be
+  rounded is a lossy cast, as for a coarser decimal, so `vec_cast("1.23",
+  decimal())` now errors. `decimal()` and `as_decimal()` still infer the
+  scale from the text.
 
 ## Bug fixes
 
@@ -94,13 +123,6 @@
   `summary()` quartiles were wrong. Integers and character operands now
   convert exactly at the scale their value gives.
 
-- `as_decimal()` on a `decimal` vector without `scale` now returns it
-  unchanged, rather than rescaling it to `decimal.default_scale`. Arrow
-  decimal arrays likewise keep the scale of their Arrow type under that
-  option, in `as_decimal()`, `arrow_as_data_frame()`, `as.data.frame()` and
-  `arrow::read_parquet()`; before, with `default_scale = 1`, 1.25 and 2.75 read
-  back as 1.2 and 2.8 (#43).
-
 - `summary()` quartiles no longer depend on `options(digits)`, `OutDec`,
   `scipen` or the numeric locale (#44). The interpolation weight was built by
   formatting a double, so `options(digits = 1)` gave a 1st quartile of 1.8 for
@@ -117,26 +139,6 @@
 - `x[[i]] <- value` now widens `x` to the scale of a finer `value`, as
   `x[i] <- value` always did, instead of silently rounding: `y[[2]] <-
   decimal("9.123")` on a scale-2 `y` used to store 9.12 (#50).
-
-- Behaviour change: `vctrs::vec_cast()` from a decimal to a coarser decimal
-  type is now a lossy cast. When rounding would change a value it raises an
-  error of class `vctrs_error_cast_lossy`, which `vctrs::allow_lossy_cast()`
-  turns back into rounding; before, `vec_cast(decimal("1.55"),
-  decimal("1.0"))` silently gave 1.6. Dropping trailing zeros, `NA` and
-  special values still casts. This reaches functions that cast a replacement
-  to an existing column: `tidyr::replace_na(decimal(c(NA, "1.5")),
-  decimal("0.125"))` now errors rather than filling in 0.1. Combining vectors
-  of different scales (`c()`, `vec_c()`, `rbind()`, `dplyr::bind_rows()`,
-  `dplyr::if_else()`, `dplyr::coalesce()`) still takes the finer scale, and
-  `as_decimal(x, scale = )` still rounds on request (#50).
-
-- Behaviour change: `vctrs::vec_cast()` from character to a decimal type now
-  uses that type's scale (#51). `vec_c("1.123", "2", .ptype = decimal("1.0"))`
-  used to return a vector labelled scale 1 that stored "1.123" and "2"
-  unchanged. Text with fewer digits is padded exactly; text that would be
-  rounded is a lossy cast, as for a coarser decimal, so `vec_cast("1.23",
-  decimal())` now errors. `decimal()` and `as_decimal()` still infer the
-  scale from the text.
 
 - `arrow::as_arrow_array()` now refuses a value wider than a pinned decimal
   type with an error of class `decimal_arrow_precision_error`, naming the
