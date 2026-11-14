@@ -31,3 +31,6 @@ jobs:
       # Quick on pull requests. Full on the weekly schedule, on a manual
       # dispatch, and on a pull request labelled `full-ci`.
       profile: auto
+      # CRAN's NOSUGGESTS flavor: arrow, data.table, dplyr, tidyr, stringi
+      # and the rest are all optional, so check the package without them.
+      nosuggests: true
