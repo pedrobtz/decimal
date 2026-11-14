@@ -686,12 +686,18 @@ test_that("a failed write leaves an existing Parquet file untouched", {
   expect_error(
     arrow::write_parquet(data.frame(x = decimal(strrep("9", 90))), path)
   )
+  # Compared by checksum only: reading through arrow memory-maps the file,
+  # and on Windows a mapped file cannot be opened for writing again.
   expect_identical(unname(tools::md5sum(path)), before)
-  expect_identical(arrow::read_parquet(path)$x, decimal("1.25"))
 
   # A negative scale used to fail only once the file had been truncated.
-  arrow::write_parquet(data.frame(x = decimal("1e3")), path)
-  expect_identical(arrow::read_parquet(path)$x, decimal("1000"))
+  existing <- withr::local_tempfile(fileext = ".parquet")
+  arrow::write_parquet(data.frame(x = decimal("1.25")), existing)
+  arrow::write_parquet(data.frame(x = decimal("1e3")), existing)
+  expect_identical(
+    arrow::read_parquet(existing, mmap = FALSE)$x,
+    decimal("1000")
+  )
 })
 
 test_that("write_dataset() leaves no empty part for a negative scale", {
