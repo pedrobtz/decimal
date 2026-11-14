@@ -285,6 +285,24 @@ test_that("summary() tolerates the arguments summary.data.frame passes", {
   expect_error(summary(x, bogus = TRUE), "`...` must be empty")
 })
 
+test_that("is.unsorted() orders decimal values, not their text", {
+  expect_false(is.unsorted(decimal(c("9", "10"))))
+  expect_true(is.unsorted(decimal(c("10", "9"))))
+  expect_false(is.unsorted(decimal(c("-Infinity", "-2.5", "0", "Infinity"))))
+  expect_false(is.unsorted(decimal("1")))
+  expect_false(is.unsorted(decimal()))
+
+  ties <- decimal(c("1", "1.0", "2"))
+  expect_false(is.unsorted(ties))
+  expect_true(is.unsorted(ties, strictly = TRUE))
+  expect_false(is.unsorted(decimal(c("9", "10")), strictly = TRUE))
+
+  expect_identical(is.unsorted(decimal(c("9", NA, "10"))), NA)
+  expect_identical(is.unsorted(decimal(c("9", "NaN", "10"))), NA)
+  expect_false(is.unsorted(decimal(c("9", NA, "10")), na.rm = TRUE))
+  expect_true(is.unsorted(decimal(c("10", "NaN", "9")), na.rm = TRUE))
+})
+
 test_that("rounding functions pass infinities and quiet NaNs through", {
   x <- decimal(c("1.5", "Infinity", "-Infinity", "NaN", "NaN123", NA))
   specials <- c("Infinity", "-Infinity", "NaN", "NaN123", NA)

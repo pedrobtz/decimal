@@ -142,6 +142,15 @@ a scale decided for it, and a string needs to be parsed (which can fail), so
 neither is a lossless, always-safe promotion the way integer is. When you mean
 it, say it — call `decimal()` or `as_decimal()` explicitly.
 
+### Base R functions that see the text
+
+A few base R functions are not generic and work on the stored text rather
+than through the decimal methods:
+
+- **`merge()`** matches a decimal key by value, so `2.5` matches `2.50`, but
+  with `sort = TRUE`, the default, it orders the result by the key's text:
+  `10` comes before `9`. Reorder the result with `order(xtfrm(key))`.
+
 ### In a data.table
 
 A `data.table` holds and prints decimal columns, and whenever it evaluates an

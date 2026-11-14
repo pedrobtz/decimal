@@ -1569,3 +1569,25 @@ is.infinite.decimal <- function(x) {
     names(x)
   )
 }
+
+# The internal default compares the stored text, so "10" sorted before "9".
+# As in base R, NaN counts as missing.
+#' @exportS3Method base::is.unsorted
+is.unsorted.decimal <- function(x, na.rm = FALSE, strictly = FALSE) {
+  missing <- is.na(x)
+  if (any(missing)) {
+    if (!na.rm) {
+      return(NA)
+    }
+    x <- x[!missing]
+  }
+
+  n <- length(x)
+  if (n <= 1L) {
+    return(FALSE)
+  }
+
+  later <- x[-1L]
+  earlier <- x[-n]
+  if (strictly) !all(later > earlier) else !all(later >= earlier)
+}

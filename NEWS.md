@@ -16,6 +16,12 @@
   sorted vector, as `mean.default()` does, and returns the median once `trim`
   reaches 0.5.
 
+- `is.unsorted()` now compares decimal values, honouring `strictly` and
+  `na.rm`, instead of the stored text, which made
+  `is.unsorted(decimal(c("9", "10")))` `TRUE` (#47). The "Decimal values"
+  vignette now notes that `merge()` orders its result by a decimal key's text
+  (#57).
+
 # decimal 0.1.1
 
 - `decimal` vectors now convert to and from 'Arrow' decimal arrays directly.
