@@ -4,11 +4,17 @@ on:
   # Gate the C, and only the C. These jobs take about seventeen minutes in
   # parallel, nearly all of it gctorture, which is worth paying on a change to
   # src/ and on nothing else: a vignette or roxygen edit still gets the
-  # ordinary checks and nothing more.
+  # ordinary checks and nothing more. The r-actions workflows also skip
+  # documentation-only changes themselves.
   pull_request:
     paths:
       - "src/**"
       - ".github/workflows/native-checks.yaml"
+      - ".github/valgrind.supp"
+
+  # The full set, including the asan containers, runs weekly.
+  schedule:
+    - cron: "47 4 * * 1"
 
 name: native-checks
 
@@ -19,6 +25,10 @@ name: native-checks
 # ever widens its permissions, this block must widen with it.
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   sanitizers:
@@ -38,3 +48,17 @@ jobs:
 
   rchk:
     uses: pedrobtz/r-actions/.github/workflows/rchk.yml@v1
+
+  # Compiler static analysis (-fanalyzer). Findings in the vendored
+  # mpdecimal are reported but not gated; reporting only until the
+  # package's own code is at zero (#63).
+  analyzers:
+    uses: pedrobtz/r-actions/.github/workflows/analyzers.yml@v1
+    with:
+      exclude: |
+        src/mpdecimal
+
+  # CRAN's rcnst, rlibro and vnu checks, the "Additional issues" that
+  # nothing above reproduces (#22).
+  cran-special:
+    uses: pedrobtz/r-actions/.github/workflows/cran-special.yml@v1
