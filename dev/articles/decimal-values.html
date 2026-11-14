@@ -200,6 +200,43 @@ double needs a scale decided for it, and a string needs to be parsed
 way integer is. When you mean it, say it — call <code><a href="../reference/decimal.html">decimal()</a></code>
 or <code><a href="../reference/as_decimal.html">as_decimal()</a></code> explicitly.</p>
 <div class="section level3">
+<h3 id="base-r-functions-that-see-the-text">Base R functions that see the text<a class="anchor" aria-label="anchor" href="#base-r-functions-that-see-the-text"></a>
+</h3>
+<p>A few base R functions are not generic and work on the stored text
+rather than through the decimal methods:</p>
+<ul>
+<li>
+<strong><code><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">min()</a></code>, <code><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max()</a></code>,
+<code><a href="https://rdrr.io/r/base/range.html" class="external-link">range()</a></code>, <code><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum()</a></code> and
+<code><a href="https://rdrr.io/r/base/prod.html" class="external-link">prod()</a></code></strong> pick their method from the first argument
+alone. With a decimal first they work as you’d expect, but
+<code>min(10L, decimal("9"))</code> compares text and returns
+<code>"10"</code>, and <code>sum(1L, x)</code> stops with an error. Put
+a decimal first, <code>min(x, 10L)</code> and <code>sum(x, 1L)</code>,
+or convert the first argument,
+<code>min(as_decimal(10L), x)</code>.</li>
+<li>
+<strong><code><a href="https://rdrr.io/r/base/merge.html" class="external-link">merge()</a></code></strong> matches a decimal key by
+value, so <code>2.5</code> matches <code>2.50</code>, but with
+<code>sort = TRUE</code>, the default, it orders the result by the key’s
+text: <code>10</code> comes before <code>9</code>. Reorder the result
+with <code>order(xtfrm(key))</code>.</li>
+<li>
+<strong><code><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">pmax()</a></code> and <code><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">pmin()</a></code></strong> give
+the result the first argument’s attributes. With a decimal first they
+compare values correctly, but they stop with an error when a later
+argument has a finer scale, because the result would carry the first
+argument’s scale: <code>pmax(decimal("10"), decimal("9.5"))</code>
+fails. Bring the arguments to a common scale first,
+<code>pmax(as_decimal(decimal("10"), scale = 1), decimal("9.5"))</code>,
+or put the finest-scaled one first,
+<code>pmax(decimal("9.5"), decimal("10"))</code>. When the first
+argument is not a decimal, <code>pmax(2L, x)</code> returns a character
+vector; write <code>pmax(x, 2L)</code> or
+<code>pmax(as_decimal(2L), x)</code> instead.</li>
+</ul>
+</div>
+<div class="section level3">
 <h3 id="in-a-data-table">In a data.table<a class="anchor" aria-label="anchor" href="#in-a-data-table"></a>
 </h3>
 <p>A <code>data.table</code> holds and prints decimal columns, and

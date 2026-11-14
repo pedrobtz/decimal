@@ -68,6 +68,69 @@
   configuration did not recognise the `wasm32` target and stopped with
   “unsupported platform”.
 
+- [`floor()`](https://rdrr.io/r/base/Round.html),
+  [`ceiling()`](https://rdrr.io/r/base/Round.html),
+  [`trunc()`](https://rdrr.io/r/base/Round.html),
+  [`round()`](https://rdrr.io/r/base/Round.html) and
+  [`signif()`](https://rdrr.io/r/base/Round.html) now return infinities
+  and quiet NaNs unchanged, payload included, and raise no signal, as
+  base R and Python’s `Decimal.to_integral_value()` do
+  ([\#49](https://github.com/pedrobtz/decimal/issues/49)).
+  [`signif()`](https://rdrr.io/r/base/Round.html) turned them into `NA`,
+  and the others trapped `invalid_operation`. A signaling NaN still
+  raises `invalid_operation`. A
+  [`quantize()`](https://pedrobtz.github.io/decimal/dev/reference/quantize.md)
+  trap on a special value no longer suggests raising the context
+  precision.
+
+- [`mean()`](https://rdrr.io/r/base/mean.html) on a `decimal` vector now
+  honours `trim`, which it silently ignored
+  ([\#53](https://github.com/pedrobtz/decimal/issues/53)). It drops
+  `floor(n * trim)` values from each end of the sorted vector, as
+  [`mean.default()`](https://rdrr.io/r/base/mean.html) does, and returns
+  the median once `trim` reaches 0.5.
+
+- [`is.unsorted()`](https://rdrr.io/r/base/is.unsorted.html) now
+  compares decimal values, honouring `strictly` and `na.rm`, instead of
+  the stored text, which made `is.unsorted(decimal(c("9", "10")))`
+  `TRUE` ([\#47](https://github.com/pedrobtz/decimal/issues/47)). The
+  “Decimal values” vignette now notes that
+  [`merge()`](https://rdrr.io/r/base/merge.html) orders its result by a
+  decimal key’s text
+  ([\#57](https://github.com/pedrobtz/decimal/issues/57)).
+
+- [`pmax()`](https://rdrr.io/r/base/Extremes.html) and
+  [`pmin()`](https://rdrr.io/r/base/Extremes.html) now refuse a decimal
+  argument whose scale is finer than the first argument’s
+  ([\#48](https://github.com/pedrobtz/decimal/issues/48)). Base R gives
+  the result the first argument’s attributes, so
+  `pmax(decimal(c("10", "9")), decimal("9.5"))` returned values held at
+  one decimal place under a `scale` of zero. Bring the arguments to a
+  common scale first, as in `pmax(as_decimal(x, scale = 1), y)`, or put
+  the finest-scaled argument first. These functions are not generic, so
+  with a non-decimal first argument they still return a character
+  vector: write `pmax(x, 2L)` or `pmax(as_decimal(2L), x)` rather than
+  `pmax(2L, x)`.
+
+- New `?decimal-summaries` documents
+  [`sum()`](https://rdrr.io/r/base/sum.html),
+  [`prod()`](https://rdrr.io/r/base/prod.html),
+  [`mean()`](https://rdrr.io/r/base/mean.html),
+  [`min()`](https://rdrr.io/r/base/Extremes.html),
+  [`max()`](https://rdrr.io/r/base/Extremes.html) and
+  [`range()`](https://rdrr.io/r/base/range.html) for `decimal` vectors,
+  including a limit no method can lift
+  ([\#42](https://github.com/pedrobtz/decimal/issues/42)): R picks the
+  method from the first argument alone, so when that is not a decimal,
+  [`min()`](https://rdrr.io/r/base/Extremes.html),
+  [`max()`](https://rdrr.io/r/base/Extremes.html) and
+  [`range()`](https://rdrr.io/r/base/range.html) compare the stored text
+  and return a character vector (`min(10L, decimal("9"))` is `"10"`),
+  and [`sum()`](https://rdrr.io/r/base/sum.html) and
+  [`prod()`](https://rdrr.io/r/base/prod.html) fail. Put a decimal
+  first, `min(x, 10L)`, or convert the first argument,
+  `min(as_decimal(10L), x)`.
+
 - `options(decimal.default_scale = )` no longer leaks into the package’s
   own conversions
   ([\#43](https://github.com/pedrobtz/decimal/issues/43)). It is the

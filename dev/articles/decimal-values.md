@@ -183,6 +183,38 @@ or
 [`as_decimal()`](https://pedrobtz.github.io/decimal/dev/reference/as_decimal.md)
 explicitly.
 
+### Base R functions that see the text
+
+A few base R functions are not generic and work on the stored text
+rather than through the decimal methods:
+
+- **[`min()`](https://rdrr.io/r/base/Extremes.html),
+  [`max()`](https://rdrr.io/r/base/Extremes.html),
+  [`range()`](https://rdrr.io/r/base/range.html),
+  [`sum()`](https://rdrr.io/r/base/sum.html) and
+  [`prod()`](https://rdrr.io/r/base/prod.html)** pick their method from
+  the first argument alone. With a decimal first they work as you’d
+  expect, but `min(10L, decimal("9"))` compares text and returns `"10"`,
+  and `sum(1L, x)` stops with an error. Put a decimal first,
+  `min(x, 10L)` and `sum(x, 1L)`, or convert the first argument,
+  `min(as_decimal(10L), x)`.
+- **[`merge()`](https://rdrr.io/r/base/merge.html)** matches a decimal
+  key by value, so `2.5` matches `2.50`, but with `sort = TRUE`, the
+  default, it orders the result by the key’s text: `10` comes before
+  `9`. Reorder the result with `order(xtfrm(key))`.
+- **[`pmax()`](https://rdrr.io/r/base/Extremes.html) and
+  [`pmin()`](https://rdrr.io/r/base/Extremes.html)** give the result the
+  first argument’s attributes. With a decimal first they compare values
+  correctly, but they stop with an error when a later argument has a
+  finer scale, because the result would carry the first argument’s
+  scale: `pmax(decimal("10"), decimal("9.5"))` fails. Bring the
+  arguments to a common scale first,
+  `pmax(as_decimal(decimal("10"), scale = 1), decimal("9.5"))`, or put
+  the finest-scaled one first, `pmax(decimal("9.5"), decimal("10"))`.
+  When the first argument is not a decimal, `pmax(2L, x)` returns a
+  character vector; write `pmax(x, 2L)` or `pmax(as_decimal(2L), x)`
+  instead.
+
 ### In a data.table
 
 A `data.table` holds and prints decimal columns, and whenever it
