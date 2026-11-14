@@ -714,6 +714,27 @@ vec_ptype2.default.decimal <- function(x, y, ..., x_arg = "", y_arg = "") {
 # Casts `value`, the decimal form of `x`, to the scale of `to`. A finer scale
 # only appends zeros. A coarser one rounds, so an element whose value changes
 # makes the cast lossy, which `allow_lossy_cast()` permits.
+decimal_lossy_cast_body <- function(from_scale, to_scale) {
+  c(
+    x = paste0(
+      "The target has scale ",
+      to_scale,
+      "; the values need scale ",
+      from_scale,
+      "."
+    ),
+    i = paste0(
+      "Round explicitly with `as_decimal(x, scale = ",
+      to_scale,
+      ")`, or cast to a prototype with scale ",
+      from_scale,
+      ", such as `decimal(scale = ",
+      from_scale,
+      "L)`."
+    )
+  )
+}
+
 decimal_cast_scale <- function(value, x, to, x_arg, to_arg, call) {
   from_scale <- decimal_scale(value)
   to_scale <- decimal_scale(to)
@@ -724,14 +745,26 @@ decimal_cast_scale <- function(value, x, to, x_arg, to_arg, call) {
 
   values <- vctrs::vec_data(value)
   lossy <- decimal_rescale_strings(vctrs::vec_data(out), from_scale) != values
-  vctrs::maybe_lossy_cast(
-    out,
-    x,
-    to,
-    lossy = !is.na(lossy) & lossy,
-    x_arg = x_arg,
-    to_arg = to_arg,
-    call = call
+  # vctrs builds the header itself; add the scales and the remedy as the
+  # body. Re-signalling the same condition from a calling handler keeps its
+  # class and leaves `allow_lossy_cast()`'s restart in reach.
+  withCallingHandlers(
+    vctrs::maybe_lossy_cast(
+      out,
+      x,
+      to,
+      lossy = !is.na(lossy) & lossy,
+      x_arg = x_arg,
+      to_arg = to_arg,
+      call = call
+    ),
+    vctrs_error_cast_lossy = function(cnd) {
+      cnd$body <- c(
+        rlang::cnd_body(cnd),
+        decimal_lossy_cast_body(from_scale, to_scale)
+      )
+      stop(cnd)
+    }
   )
 }
 

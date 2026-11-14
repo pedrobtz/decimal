@@ -536,3 +536,37 @@ test_that("a decimal object that holds doubles is refused rather than printed", 
   expect_error(format(bad), "holds doubles")
   expect_error(as.character(bad), "holds doubles")
 })
+
+test_that("a lossy cast to a coarser decimal names the scales and stays a vctrs lossy cast", {
+  err <- expect_error(
+    vctrs::vec_cast("1.2300", decimal()),
+    class = "vctrs_error_cast_lossy"
+  )
+  expect_match(conditionMessage(err), "target has scale 0", fixed = TRUE)
+  expect_match(conditionMessage(err), "need scale 4", fixed = TRUE)
+  expect_match(conditionMessage(err), "as_decimal(x, scale = 0)", fixed = TRUE)
+  expect_identical(
+    vctrs::allow_lossy_cast(vctrs::vec_cast("1.2300", decimal())),
+    decimal("1")
+  )
+  expect_error(
+    vctrs::vec_cast(decimal("1.555"), decimal("1.00")),
+    class = "vctrs_error_cast_lossy"
+  )
+})
+
+test_that("character construction still infers the scale from the strings", {
+  expect_identical(attr(as_decimal("1.2300"), "scale"), 4L)
+  expect_identical(attr(decimal(c("1.5", "2.125")), "scale"), 3L)
+  expect_identical(
+    vctrs::vec_data(decimal(c("1.5", "2.125"))),
+    c("1.500", "2.125")
+  )
+})
+
+test_that("combining a decimal with a character is refused as before", {
+  # Unchanged from 0.1.1: there is no common type of decimal and character.
+  x <- decimal("1.5")
+  expect_error(vctrs::vec_c(x, "2.25"), class = "vctrs_error_incompatible_type")
+  expect_error(c(x, "2.25"), class = "vctrs_error_incompatible_type")
+})
