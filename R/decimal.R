@@ -1008,6 +1008,10 @@ vec_math.decimal <- function(.fn, .x, ...) {
       decimal_extrema(.x, na.rm = na_rm, which = "max")
     },
     mean = {
+      trim <- if ("trim" %in% names(dots)) dots$trim else 0
+      if (!is.numeric(trim) || length(trim) != 1L || is.na(trim)) {
+        rlang::abort("`trim` must be a number.")
+      }
       prep <- decimal_summary_prepare(.x, na.rm = na_rm, mode = "arith")
       if (prep$kind == "na") {
         NA_decimal_
@@ -1018,7 +1022,7 @@ vec_math.decimal <- function(.fn, .x, ...) {
       } else if (length(prep$x) == 0L) {
         decimal("NaN")
       } else {
-        decimal_reduce(prep$x, "+") / as.integer(length(prep$x))
+        decimal_trimmed_mean(prep$x, trim)
       }
     },
     stop(
@@ -1026,6 +1030,31 @@ vec_math.decimal <- function(.fn, .x, ...) {
       call. = FALSE
     )
   )
+}
+
+# `mean(x, trim = )` as `mean.default()` computes it: drop `floor(n * trim)`
+# values from each end of the sorted vector, and take the median once `trim`
+# reaches 0.5. Base R also floors the double product `n * trim`.
+decimal_trimmed_mean <- function(x, trim) {
+  n <- length(x)
+  if (trim > 0) {
+    sorted <- sort(x)
+    if (trim >= 0.5) {
+      half <- (n + 1L) %/% 2L
+      x <- if (n %% 2L == 1L) sorted[half] else sorted[half + 0:1]
+    } else {
+      lo <- floor(n * trim) + 1
+      x <- sorted[lo:(n + 1 - lo)]
+    }
+  }
+
+  decimal_reduce(x, "+") / as.integer(length(x))
+}
+
+# vctrs' `mean()` method drops `trim`, so decimal has its own.
+#' @export
+mean.decimal <- function(x, trim = 0, na.rm = FALSE, ...) {
+  vec_math.decimal("mean", x, trim = trim, na.rm = na.rm)
 }
 
 #' @export

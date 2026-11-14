@@ -341,3 +341,32 @@ test_that("a quantize trap on a special value does not blame the precision", {
   expect_snapshot(error = TRUE, round(decimal("sNaN")))
   expect_snapshot(error = TRUE, quantize(decimal("Infinity"), decimal("1")))
 })
+
+test_that("mean() trims like base R", {
+  values <- c("-5", "1", "2", "3", "4", "7", "8.5", "100")
+  x <- decimal(values)
+  for (trim in c(0, 0.1, 0.125, 0.2, 0.25, 0.375, 0.49, 0.5, 0.7, -1)) {
+    # Every expected mean here is exact in binary, so it converts losslessly.
+    expected <- decimal(as.character(mean(as.double(values), trim = trim)))
+    expect_true(mean(x, trim = trim) == expected)
+  }
+
+  four <- decimal(c("1", "2", "3", "100"))
+  expect_identical(mean(four, trim = 0.25), decimal("2.5"))
+  # A trim of 0.5 or more gives the median.
+  expect_identical(mean(four, trim = 0.5), decimal("2.5"))
+  expect_identical(mean(decimal(c("1", "2", "100")), trim = 0.5), decimal("2"))
+  # Exact where a double is not.
+  expect_identical(
+    mean(decimal(c("0.1", "0.2", "0.3", "1E+20")), trim = 0.25),
+    decimal("0.25")
+  )
+
+  y <- decimal(c("1", NA, "2", "3", "100"))
+  expect_identical(mean(y, trim = 0.25), NA_decimal_)
+  expect_identical(mean(y, trim = 0.25, na.rm = TRUE), decimal("2.5"))
+  expect_identical(mean(decimal(), trim = 0.25), decimal("NaN"))
+
+  expect_error(mean(x, trim = c(0.1, 0.2)), "`trim` must be a number")
+  expect_error(mean(x, trim = "a"), "`trim` must be a number")
+})

@@ -11,6 +11,11 @@
   signaling NaN still raises `invalid_operation`. A `quantize()` trap on a
   special value no longer suggests raising the context precision.
 
+- `mean()` on a `decimal` vector now honours `trim`, which it silently
+  ignored (#53). It drops `floor(n * trim)` values from each end of the
+  sorted vector, as `mean.default()` does, and returns the median once `trim`
+  reaches 0.5.
+
 # decimal 0.1.1
 
 - `decimal` vectors now convert to and from 'Arrow' decimal arrays directly.
