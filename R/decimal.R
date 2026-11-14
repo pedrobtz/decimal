@@ -34,6 +34,7 @@ decimal_resolve_scale <- function(scale) {
 # infers the scale from the text.
 decimal_from_character <- function(x, scale = NULL) {
   canon <- .decimal_canonicalize_strings(x)
+  decimal_check_scale_range(canon)
   if (is.null(scale)) {
     scale <- decimal_infer_scale(canon)
   }
@@ -55,6 +56,23 @@ decimal_from_integer <- function(x, scale = 0L) {
 # that are NA, infinities, or NaNs (they carry no fractional-digit count).
 decimal_string_scale <- function(x) {
   .decimal_string_scale(x)
+}
+
+# A finite value whose scale (fractional digits minus exponent) leaves
+# integer range has an NA scale, which every scale computation would
+# otherwise skip as if it were an infinity or NaN. Refuse it at construction.
+decimal_check_scale_range <- function(x) {
+  unscaled <- which(is.na(decimal_string_scale(x)) & !is.na(x))
+  bad <- unscaled[grepl("^-?[0-9]", x[unscaled])]
+  if (length(bad) > 0L) {
+    rlang::abort(paste0(
+      "Decimal scale outside integer range at element ",
+      bad[[1]],
+      ": a value's scale (fractional digits minus exponent) must lie ",
+      "between -2147483647 and 2147483647."
+    ))
+  }
+  invisible(x)
 }
 
 decimal_infer_scale <- function(x) {

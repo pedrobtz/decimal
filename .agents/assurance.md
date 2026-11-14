@@ -45,7 +45,7 @@ share #66) and one per oracle group (#67 native boundaries, #68 Parquet,
 | decimal text parse and canonical form       | hand-written expected strings only                                                        | gap #67                                      |
 | fractional-digit scan of text (own C)       | hand-written cases, INT range straddled; no differential against the parsed exponent      | gap #67                                      |
 | double to decimal (exact)                   | hand-written IEEE cases (`0.1`, `-0`, specials)                                           | gap #67                                      |
-| decimal to double                           | hand-written cases only; no round trip over random doubles                                | gap #67                                      |
+| decimal to double                           | 3,956 Python `float()` results: ties, near-ties, subnormals, DBL_MAX, >4932 digits         | tests/testthat/fixtures/to-double.csv       |
 | arithmetic, Math, quantize, fma vs the spec | hand-written expected values; mpdecimal's decTest vectors are not run                     | gap #67                                      |
 | order and equality proxy keys               | 20-value hand-sorted list and equal-key list; no property test against `mpd_cmp()`        | gap #67                                      |
 | Arrow decimal to `decimal`                  | property test: Arrow's string cast against `decimal()` re-parse, all four widths          | tests/testthat/test-arrow.R                 |
