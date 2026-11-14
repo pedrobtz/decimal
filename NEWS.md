@@ -9,7 +9,7 @@
   `collect()` or `arrange()`, because arrow compares this package's extension
   types by name alone. Until this is fixed, pin one type with
   `arrow_decimal_type()` for every part that will be appended or combined
-  (#37).
+  (#37). The fix depends on arrow (apache/arrow#55605).
 
 ## Behaviour changes
 
