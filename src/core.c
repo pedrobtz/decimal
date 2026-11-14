@@ -5,6 +5,7 @@
 
 #include <mpdecimal.h>
 
+#include <float.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1048,30 +1049,40 @@ SEXP decimal_c_from_double_strings(SEXP x) {
   return out;
 }
 
-/* Conversion to double hands strtod() a string it rounds correctly.
+/* Conversion to double, correctly rounded (round-half-even) on every platform.
  *
  * R_strtod(), which R's own parser uses, accumulates the digits in a long
- * double and scales by a power of ten, so it is not correctly rounded and it
- * overflows to Inf or NaN once the coefficient passes about 4932 digits (as
- * a vector scale of 5000 makes it). The C library's strtod() is correctly
- * rounded (round-half-even) for input of any length on every platform R
- * supports: glibc, the BSD/macOS libc (David Gay's gdtoa), mingw-w64's
- * __mingw_strtod (gdtoa as well) and the Windows UCRT used since R 4.2.
+ * double, so it is not correctly rounded and overflows once a coefficient
+ * passes about 4932 digits. The C library's strtod() is not a safe substitute
+ * either: the one R links on Windows misrounds some long near-ties. So
+ * strtod() only supplies a first guess, and the guess is then checked exactly:
  *
- * Two things keep that input short and locale-proof:
+ * - The value is reduced to the text "[-]<digits>E<exponent>". It has no
+ *   decimal point, so neither strtod() nor the parse below depends on
+ *   LC_NUMERIC. A coefficient longer than DECIMAL_DOUBLE_DIGITS is truncated
+ *   to that many digits, with a final sticky digit 1 appended if anything
+ *   nonzero was dropped. Every double and every midpoint between adjacent
+ *   doubles has at most 767 significant digits, so none lies strictly
+ *   between the truncated value and the next value on the 800-digit grid in
+ *   the same decade; the sticky form therefore compares with every double
+ *   and every midpoint exactly as the original does, and rounds the same.
  *
- * - The text is always "[-]<coefficient digits>E<exponent>", with no decimal
- *   point, so it parses the same whatever LC_NUMERIC is. R keeps LC_NUMERIC
- *   at "C", but a user can change it.
+ * - Fast path (Clinger): with at most 15 digits and |exponent| <= 22, both
+ *   the coefficient and 10^|exponent| are exact doubles, so a single IEEE
+ *   multiplication or division is the correctly rounded result. This
+ *   assumes double arithmetic is evaluated in double (SSE2 or any 64-bit
+ *   target, as R's supported platforms are), not in x87 extended precision.
  *
- * - A coefficient longer than DECIMAL_DOUBLE_DIGITS is truncated to that
- *   many digits, and a final sticky digit 1 is appended if anything nonzero
- *   was dropped. Every double and every midpoint between adjacent doubles
- *   has at most 767 significant digits, so none of them lies strictly
- *   between the truncated value and the next value on the 800-digit grid.
- *   The original and the sticky form therefore fall on the same side of
- *   every rounding boundary and round to the same double, and the cost
- *   stays bounded for coefficients of millions of digits.
+ * - Otherwise, for the guess g = sig * 2^e2 the midpoints to its neighbours
+ *   are (4 sig + 2) * 2^(e2-2) above and (4 sig - 2) * 2^(e2-2) below, or
+ *   (4 sig - 1) * 2^(e2-2) when sig is the smallest normal significand and
+ *   the gap below is half the gap above. Both are compared exactly with the
+ *   value in mpdecimal, scaling the value by 2^(2-e2) when e2 < 2 so that
+ *   all quantities are integers. The guess moves one ulp at a time until the
+ *   value lies between the midpoints; a value on a midpoint goes to the
+ *   neighbour with the even significand. Stepping above DBL_MAX gives Inf,
+ *   which is IEEE overflow: the midpoint between DBL_MAX and 2^1024 rounds
+ *   to 2^1024 because DBL_MAX's significand is odd.
  */
 #define DECIMAL_DOUBLE_DIGITS 800
 
@@ -1119,9 +1130,232 @@ static int decimal_double_text(mpd_t *dec, char *text) {
   return 1;
 }
 
+/* Scratch handles for the exact check, kept across the elements of one call
+ * so that each element does not allocate its own. `pow2` holds 2^k for the
+ * last k used, since nearby values share their binary exponent. The kernel
+ * owns the handles and releases them before anything that can longjmp. */
+typedef struct {
+  mpd_t *value;
+  mpd_t *pow2;
+  mpd_t *scaled;
+  mpd_t *tmp;
+  int64_t k;
+  int valid;
+} decimal_double_scratch;
+
+static void decimal_double_scratch_release(decimal_double_scratch *scratch) {
+  decimal_del_if_allocated(scratch->value);
+  decimal_del_if_allocated(scratch->pow2);
+  decimal_del_if_allocated(scratch->scaled);
+  decimal_del_if_allocated(scratch->tmp);
+  scratch->value = NULL;
+  scratch->pow2 = NULL;
+  scratch->scaled = NULL;
+  scratch->tmp = NULL;
+  scratch->valid = 0;
+}
+
+/* Returns 0 on allocation failure. */
+static int decimal_double_scratch_ready(decimal_double_scratch *scratch) {
+  if (scratch->value != NULL) {
+    return 1;
+  }
+  scratch->value = mpd_qnew();
+  scratch->pow2 = mpd_qnew();
+  scratch->scaled = mpd_qnew();
+  scratch->tmp = mpd_qnew();
+  scratch->valid = 0;
+  if (scratch->value == NULL || scratch->pow2 == NULL ||
+      scratch->scaled == NULL || scratch->tmp == NULL) {
+    decimal_double_scratch_release(scratch);
+    return 0;
+  }
+  return 1;
+}
+
+/* Exact comparison of `a` (positive, integer coefficient times 10^exp) with
+ * m * 2^k, where `scaled` holds a * 2^max(-k, 0) and `pow2` holds 2^|k|.
+ * Returns -1, 0 or 1 in *cmp, or 0 on failure. */
+static int decimal_cmp_dyadic(const mpd_t *scaled, uint64_t m, int64_t k,
+                              const mpd_t *pow2, mpd_t *tmp,
+                              const mpd_context_t *ctx, int *cmp) {
+  uint32_t status = 0;
+
+  mpd_qset_u64_exact(tmp, m, &status);
+  if (k > 0) {
+    mpd_qmul(tmp, tmp, pow2, ctx, &status);
+  }
+  if (status & (MPD_Malloc_error | MPD_Inexact | MPD_Rounded)) {
+    return 0;
+  }
+  *cmp = mpd_qcmp(scaled, tmp, &status);
+  return 1;
+}
+
+/* The correctly rounded double for the positive value `a`, starting from
+ * the guess `guess` (finite or +Inf, not NaN). Returns 0 on allocation
+ * failure. */
+static int decimal_correct_double(double guess,
+                                  decimal_double_scratch *scratch,
+                                  double *out) {
+  uint64_t bits;
+  mpd_context_t ctx;
+  const mpd_t *a = scratch->value;
+  mpd_t *pow2 = scratch->pow2;
+  mpd_t *scaled = scratch->scaled;
+  mpd_t *tmp = scratch->tmp;
+
+  mpd_maxcontext(&ctx);
+  ctx.traps = 0;
+  ctx.status = 0;
+
+  if (guess > DBL_MAX) {
+    guess = DBL_MAX;
+  }
+  if (guess < 0) {
+    guess = 0;
+  }
+  memcpy(&bits, &guess, sizeof bits);
+
+  for (;;) {
+    uint64_t raw_exponent = bits >> 52;
+    uint64_t fraction = bits & ((UINT64_C(1) << 52) - 1);
+    uint64_t sig = raw_exponent == 0 ? fraction
+                                     : (fraction | (UINT64_C(1) << 52));
+    int64_t e2 = raw_exponent == 0 ? -1074 : (int64_t)raw_exponent - 1075;
+    int64_t k = e2 - 2;
+    uint64_t abs_k = (uint64_t)(k < 0 ? -k : k);
+    uint32_t status = 0;
+    int odd = (int)(sig & 1);
+    int cmp_hi;
+    int cmp_lo = 1;
+
+    if (!scratch->valid || scratch->k != (int64_t)abs_k) {
+      scratch->valid = 0;
+      mpd_qset_u64_exact(tmp, abs_k, &status);
+      mpd_qset_u64_exact(pow2, 2, &status);
+      mpd_qpow(pow2, pow2, tmp, &ctx, &status);
+      if (status & (MPD_Malloc_error | MPD_Inexact | MPD_Rounded)) {
+        return 0;
+      }
+      scratch->k = (int64_t)abs_k;
+      scratch->valid = 1;
+    }
+    if (k < 0) {
+      mpd_qmul(scaled, a, pow2, &ctx, &status);
+    } else if (!mpd_qcopy(scaled, a, &status)) {
+      return 0;
+    }
+    if (status & (MPD_Malloc_error | MPD_Inexact | MPD_Rounded)) {
+      return 0;
+    }
+
+    if (!decimal_cmp_dyadic(scaled, 4 * sig + 2, k, pow2, tmp, &ctx,
+                            &cmp_hi)) {
+      return 0;
+    }
+    if (cmp_hi > 0 || (cmp_hi == 0 && odd)) {
+      if (bits == UINT64_C(0x7FEFFFFFFFFFFFFF)) {
+        *out = R_PosInf;
+        return 1;
+      }
+      ++bits;
+      continue;
+    }
+
+    if (sig != 0) {
+      uint64_t m_lo =
+          (fraction == 0 && raw_exponent > 1) ? 4 * sig - 1 : 4 * sig - 2;
+
+      if (!decimal_cmp_dyadic(scaled, m_lo, k, pow2, tmp, &ctx, &cmp_lo)) {
+        return 0;
+      }
+    }
+    if (cmp_lo < 0 || (cmp_lo == 0 && odd)) {
+      --bits;
+      continue;
+    }
+
+    memcpy(out, &bits, sizeof bits);
+    return 1;
+  }
+}
+
+/* Converts the text built by decimal_double_text(). Returns 0 on allocation
+ * failure or if the text does not parse. */
+static int decimal_double_from_text(const char *text,
+                                    decimal_double_scratch *scratch,
+                                    double *out) {
+  static const double pow10[] = {
+      1e0,  1e1,  1e2,  1e3,  1e4,  1e5,  1e6,  1e7,  1e8,  1e9,  1e10, 1e11,
+      1e12, 1e13, 1e14, 1e15, 1e16, 1e17, 1e18, 1e19, 1e20, 1e21, 1e22};
+  const char *p = text;
+  const char *digits;
+  size_t ndigits;
+  int negative = 0;
+  char *end = NULL;
+  long long expo;
+  double guess;
+  double value;
+  uint32_t status = 0;
+
+  if (*p == '-') {
+    negative = 1;
+    ++p;
+  }
+  digits = p;
+  while (*p >= '0' && *p <= '9') {
+    ++p;
+  }
+  ndigits = (size_t)(p - digits);
+  if (ndigits == 0 || *p != 'E') {
+    return 0;
+  }
+  expo = strtoll(p + 1, &end, 10);
+  if (end == p + 1 || *end != '\0') {
+    return 0;
+  }
+
+  if (ndigits == 1 && digits[0] == '0') {
+    *out = negative ? -0.0 : 0.0;
+    return 1;
+  }
+
+  if (ndigits <= 15 && expo >= -22 && expo <= 22) {
+    uint64_t coef = 0;
+    size_t j;
+
+    for (j = 0; j < ndigits; ++j) {
+      coef = coef * 10 + (uint64_t)(digits[j] - '0');
+    }
+    value = (double)coef;
+    value = expo >= 0 ? value * pow10[expo] : value / pow10[-expo];
+    *out = negative ? -value : value;
+    return 1;
+  }
+
+  /* ERANGE is not an error: an overflowed or underflowed guess is corrected
+   * like any other. */
+  guess = strtod(digits, &end);
+  if (end == digits || *end != '\0' || ISNAN(guess)) {
+    return 0;
+  }
+
+  if (!decimal_double_scratch_ready(scratch)) {
+    return 0;
+  }
+  mpd_qset_string_exact(scratch->value, digits, &status);
+  if (status != 0 || !decimal_correct_double(guess, scratch, &value)) {
+    return 0;
+  }
+  *out = negative ? -value : value;
+  return 1;
+}
+
 SEXP decimal_c_to_double_strings(SEXP x) {
   R_xlen_t i;
   SEXP out;
+  decimal_double_scratch scratch = {NULL, NULL, NULL, NULL, 0, 0};
 
   if (TYPEOF(x) != STRSXP) {
     Rf_error("`x` must be a character vector");
@@ -1133,11 +1367,11 @@ SEXP decimal_c_to_double_strings(SEXP x) {
     mpd_t *dec;
     uint32_t parse_status = 0;
     char text[DECIMAL_DOUBLE_TEXT];
-    char *end = NULL;
     double value;
     int ok;
 
     if (i % 1024 == 0) {
+      decimal_double_scratch_release(&scratch);
       R_CheckUserInterrupt();
     }
 
@@ -1146,9 +1380,14 @@ SEXP decimal_c_to_double_strings(SEXP x) {
       continue;
     }
 
-    dec = decimal_qnew_checked();
+    dec = mpd_qnew();
+    if (dec == NULL) {
+      decimal_double_scratch_release(&scratch);
+      Rf_error("mpdecimal allocation failure");
+    }
     if (!decimal_parse_exact(dec, x, i, &parse_status)) {
       mpd_del(dec);
+      decimal_double_scratch_release(&scratch);
       decimal_abort_parse(parse_status, i);
     }
 
@@ -1167,14 +1406,13 @@ SEXP decimal_c_to_double_strings(SEXP x) {
     ok = decimal_double_text(dec, text);
     mpd_del(dec);
     if (!ok) {
+      decimal_double_scratch_release(&scratch);
       Rf_error("Unable to format decimal at element %lld",
                (long long)i + 1);
     }
 
-    /* ERANGE is not an error here: overflow gives +-Inf and underflow a
-     * correctly rounded subnormal or zero, which is the conversion wanted. */
-    value = strtod(text, &end);
-    if (end == text || *end != '\0') {
+    if (!decimal_double_from_text(text, &scratch, &value)) {
+      decimal_double_scratch_release(&scratch);
       Rf_error("Unable to convert decimal to double at element %lld",
                (long long)i + 1);
     }
@@ -1182,6 +1420,7 @@ SEXP decimal_c_to_double_strings(SEXP x) {
     REAL(out)[i] = value;
   }
 
+  decimal_double_scratch_release(&scratch);
   UNPROTECT(1);
   return out;
 }

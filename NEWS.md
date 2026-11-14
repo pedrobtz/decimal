@@ -5,9 +5,10 @@
   last place (`decimal("83E25")`, `decimal("1e23", scale = 15)`), returned
   `Inf` for `1.7976931348623158E+308` instead of the largest double, and gave
   `NaN` or `Inf` once a value had more than about 4932 digits, as any value
-  in a vector with `scale = 5000` does. Conversion now uses the C library's
-  correctly rounded `strtod()` and is checked against nearly 4,000 values
-  computed by Python (#45).
+  in a vector with `scale = 5000` does. Each result is now checked exactly
+  against the midpoints to its neighbouring doubles, so it no longer depends
+  on the platform's C library, and the conversion is tested against nearly
+  4,000 values computed by Python (#45).
 
 - `decimal()` and `as_decimal()` now refuse a value whose scale, its
   fractional digits minus its exponent, lies outside integer range, such as
