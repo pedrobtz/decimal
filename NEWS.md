@@ -47,6 +47,13 @@
   formatting a double, so `options(digits = 1)` gave a 1st quartile of 1.8 for
   `c(1, 2, 4, 7.1)` instead of 1.75, and `OutDec = ","` raised an error. The
   weight is now chosen from exact text.
+
+- `vctrs::vec_sort()`, `vctrs::vec_order()`, `dplyr::arrange(.locale = )` and
+  `tidyr::expand()` now order negative decimals by value in every collation
+  locale (#46). Under `en_US.UTF-8`, `vec_sort(decimal(c("-1.25", "-1.2")))`
+  gave -1.20 before -1.25, because the order proxy was text that sorted
+  correctly only byte by byte. It is now an integer rank. `sort()`, `order()`,
+  `rank()` and `dplyr::arrange()` without `.locale` were already correct.
 ||||||| 11134d5
 
 - `arrow::as_arrow_array()` now refuses a value wider than a pinned decimal

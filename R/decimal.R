@@ -942,12 +942,17 @@ vec_proxy_compare.decimal <- function(x, ...) {
   )
 }
 
+# The byte key above orders by value only under C-locale comparison, which
+# `vec_compare()` and `vec_rank()` use. `vec_order()` and `vec_sort()` call
+# base `order()` on the proxy, which collates text in the session locale, and
+# `.locale` in dplyr collates it with ICU; both misplaced negatives. Dense
+# ranks of the key, computed in the C locale, are integers that no collation
+# touches. They order only the elements given, which is all this proxy is used
+# for: vctrs proxies both sides of a join together.
 #' @export
 vec_proxy_order.decimal <- function(x, ...) {
-  decimal_restore_names(
-    .decimal_order_proxy_strings(vctrs::vec_data(x)),
-    names(x)
-  )
+  key <- .decimal_order_proxy_strings(vctrs::vec_data(x))
+  vctrs::vec_rank(key, ties = "dense", incomplete = "na")
 }
 
 #' @export
