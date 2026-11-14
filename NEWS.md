@@ -9,7 +9,13 @@
   `collect()` or `arrange()`, because arrow compares this package's extension
   types by name alone. Until this is fixed, pin one type with
   `arrow_decimal_type()` for every part that will be appended or combined
-  (#37). The fix depends on arrow (apache/arrow#55605).
+  (#37). The fix depends on arrow
+  ([apache/arrow#55605](https://github.com/apache/arrow/issues/55605)).
+
+- `merge()` orders its result by a decimal key's stored text, so
+  `merge()` on a key column can put "10" before "9". The "Decimal values"
+  vignette notes this; sort the result afterwards with `order()` or
+  `dplyr::arrange()`, which compare values (#57).
 
 ## Behaviour changes
 
@@ -70,7 +76,8 @@
   parts whose values had different magnitudes, now combine exactly, where
   arrow used to fail with "Array chunks must all be same type". Chunks that
   differ in scale or width raise an error of class
-  `decimal_arrow_chunk_error` instead of being misread (#37).
+  `decimal_arrow_chunk_error` instead of being misread. This is the part of
+  #37 the package can fix; the rest is under Known issues.
 
 - The bundled 'mpdecimal' now builds for WebAssembly (webR). Its configuration
   did not recognise the `wasm32` target and stopped with "unsupported
@@ -90,9 +97,7 @@
 
 - `is.unsorted()` now compares decimal values, honouring `strictly` and
   `na.rm`, instead of the stored text, which made
-  `is.unsorted(decimal(c("9", "10")))` `TRUE` (#47). The "Decimal values"
-  vignette now notes that `merge()` orders its result by a decimal key's text
-  (#57).
+  `is.unsorted(decimal(c("9", "10")))` `TRUE` (#47).
 
 - `pmax()` and `pmin()` now refuse a decimal argument whose scale is finer
   than the first argument's (#48). Base R gives the result the first

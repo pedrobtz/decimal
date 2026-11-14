@@ -24,8 +24,9 @@ Three behaviour changes are listed in NEWS.md:
 - A cast to a coarser decimal is now a vctrs lossy-cast error.
 - A character-to-decimal cast now uses the target scale.
 
-One known issue with combining Arrow columns of different decimal types is
-documented, along with a workaround.
+Two known issues are documented in NEWS.md, each with a workaround: combining
+Arrow columns of different decimal types, and `merge()` ordering its result by
+a decimal key's text.
 
 The bundled 'mpdecimal' now selects its 32- or 64-bit configuration on
 WebAssembly as well.
