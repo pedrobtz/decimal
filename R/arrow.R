@@ -59,6 +59,24 @@
 #' has opened, and so emptied, the destination file; the same holds for a
 #' table already carrying a decimal field whose scale exceeds its precision.
 #'
+#' @section Known issue: combining columns of different types:
+#' Combining decimal extension columns that arrow typed differently, with
+#' different scales or storage widths, can silently misread values (#37).
+#' This includes `arrow::concat_arrays()`, `arrow::concat_tables()` and
+#' `arrow::open_dataset()` over parts written separately, followed by
+#' `collect()` or `arrange()`. arrow compares two of this package's extension
+#' types by name alone, so it can reinterpret one part's stored integers at
+#' the other part's scale: 3.125 reads back as 31.25.
+#'
+#' **Workaround:** pin one type with [arrow_decimal_type()] for every part
+#' that will be appended or combined.
+#'
+#' The package checks every chunk it converts and raises an error of class
+#' `decimal_arrow_chunk_error` for a column whose chunks differ in scale or
+#' width. Chunks that differ only in precision are combined exactly. A misread
+#' that arrow's own kernels have already produced, as in
+#' `arrow::concat_arrays()`, cannot be detected.
+#'
 #' @section Options:
 #' `decimal.arrow_extension`: `TRUE` (the default) writes the extension type;
 #' `FALSE` writes plain decimal fields everywhere.
@@ -144,18 +162,77 @@ decimal_register_arrow <- function() {
 }
 
 # The plain decimal array beneath an extension array, or `x` unchanged.
+#
+# arrow compares two `r.decimal` types by name alone, so the chunks of one
+# extension column can carry different storage: a dataset scanned over parts
+# written separately, or `arrow::concat_tables()`. Chunks that differ only in
+# precision are widened to a common type. Chunks that differ in scale or width
+# cannot be combined without reading some of them at the wrong scale, so they
+# are an error (#37).
 decimal_arrow_storage <- function(x) {
   if (!decimal_is_arrow_extension(x$type)) {
     return(x)
   }
-  if (inherits(x, "ChunkedArray")) {
-    chunks <- lapply(x$chunks, function(chunk) chunk$storage())
-    return(do.call(
-      arrow::ChunkedArray$create,
-      c(chunks, list(type = x$type$storage_type()))
-    ))
+  if (!inherits(x, "ChunkedArray")) {
+    return(x$storage())
   }
-  x$storage()
+  declared <- x$type$storage_type()
+  chunks <- lapply(x$chunks, function(chunk) chunk$storage())
+  decimal_arrow_check_chunks(chunks, declared)
+
+  precisions <- vapply(chunks, function(chunk) chunk$type$precision(), 1L)
+  precision <- max(precisions, declared$precision())
+  type <- decimal_arrow_like(declared, precision)
+  chunks <- lapply(chunks, function(chunk) {
+    if (chunk$type$Equals(type)) chunk else chunk$cast(type)
+  })
+  do.call(arrow::ChunkedArray$create, c(chunks, list(type = type)))
+}
+
+# A decimal type of the same width and scale as `type`, at `precision`.
+decimal_arrow_like <- function(type, precision) {
+  constructor <- switch(
+    class(type)[[1L]],
+    Decimal32Type = arrow::decimal32,
+    Decimal64Type = arrow::decimal64,
+    Decimal128Type = arrow::decimal128,
+    Decimal256Type = arrow::decimal256
+  )
+  constructor(precision, type$scale())
+}
+
+decimal_arrow_check_chunks <- function(chunks, declared) {
+  for (i in seq_along(chunks)) {
+    type <- chunks[[i]]$type
+    same <- identical(class(type)[[1L]], class(declared)[[1L]]) &&
+      identical(type$scale(), declared$scale())
+    if (!same) {
+      decimal_arrow_abort(
+        c(
+          paste0(
+            "Chunk ",
+            i,
+            " of a decimal column is stored as `",
+            type$ToString(),
+            "`, but the column's type is `",
+            declared$ToString(),
+            "`."
+          ),
+          i = paste0(
+            "arrow combined parts of different scale or width under one ",
+            "type, and some values would be misread."
+          ),
+          i = paste0(
+            "Pin one type with `arrow_decimal_type()` for every part that ",
+            "will be appended or combined."
+          )
+        ),
+        class = "decimal_arrow_chunk_error",
+        call = NULL
+      )
+    }
+  }
+  invisible(chunks)
 }
 
 #' Arrow type for a decimal column

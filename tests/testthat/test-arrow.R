@@ -433,6 +433,125 @@ test_that("a reader without the extension registered sees the plain decimal", {
   expect_type(arrow::read_parquet(path)$amount, "double")
 })
 
+# Combining columns ---------------------------------------------------------
+
+# Writes each element of `parts` as its own file of one dataset.
+write_decimal_parts <- function(dir, parts) {
+  for (i in seq_along(parts)) {
+    df <- data.frame(id = seq_along(parts[[i]]) + 10L * i)
+    df$x <- decimal(parts[[i]])
+    arrow::write_dataset(df, dir, basename_template = paste0(i, "-{i}.parquet"))
+  }
+  invisible(dir)
+}
+
+test_that("chunks of different scale or width are an error, not a misread", {
+  skip_if_not_installed("arrow")
+
+  tab <- arrow::concat_tables(
+    arrow::arrow_table(x = decimal("1.25")),
+    arrow::arrow_table(x = decimal("3.125"))
+  )
+  expect_error(as.data.frame(tab), class = "decimal_arrow_chunk_error")
+  expect_snapshot(as.data.frame(tab), error = TRUE)
+
+  chunked <- arrow::chunked_array(
+    arrow::as_arrow_array(decimal("1.25")),
+    arrow::as_arrow_array(decimal(paste0(strrep("9", 40), ".25")))
+  )
+  expect_error(as.vector(chunked), class = "decimal_arrow_error")
+  expect_error(as_decimal(chunked), class = "decimal_arrow_chunk_error")
+})
+
+test_that("chunks that differ only in precision combine exactly", {
+  skip_if_not_installed("arrow")
+
+  tab <- arrow::concat_tables(
+    arrow::arrow_table(x = decimal("1.25")),
+    arrow::arrow_table(x = decimal(c("-1234.50", NA)))
+  )
+  expect_identical(
+    as.data.frame(tab)$x,
+    decimal(c("1.25", "-1234.50", NA))
+  )
+})
+
+test_that("a dataset scan over parts of different scale or width errors", {
+  skip_if_no_dataset()
+  skip_if_not_installed("dplyr")
+
+  scan <- function(parts) {
+    dir <- write_decimal_parts(
+      withr::local_tempdir(.local_envir = parent.frame()),
+      parts
+    )
+    as.data.frame(arrow::Scanner$create(arrow::open_dataset(dir))$ToTable())
+  }
+
+  expect_error(
+    scan(list(c("1.25", "2.50"), c("3.125", "4.5"))),
+    class = "decimal_arrow_chunk_error"
+  )
+  expect_error(
+    scan(list(c("1.25", "2.50"), c("1e40", "1"))),
+    class = "decimal_arrow_chunk_error"
+  )
+  # Parts that differ only in precision used to fail in arrow.
+  out <- scan(list(c("1.25", "2.50"), c("13.25", "4.50")))
+  expect_identical(
+    out$x[order(out$id)],
+    decimal(c("1.25", "2.50", "13.25", "4.50"))
+  )
+})
+
+# Known issue #37: arrow compares two `r.decimal` types by name alone, so its
+# own kernels can combine arrays of different storage under one type before
+# this package sees them. The tests below record the misreads.
+
+test_that("extension types with different storage are not equal", {
+  skip("Known issue #37: arrow compares r.decimal types by name alone.")
+  skip_if_not_installed("arrow")
+
+  narrow <- arrow_decimal_type(5, 2)
+  expect_true(narrow$Equals(arrow_decimal_type(5, 2)))
+  expect_false(narrow$Equals(arrow_decimal_type(5, 3)))
+  expect_false(narrow$Equals(arrow_decimal_type(50, 10)))
+})
+
+test_that("concat_arrays() never relabels arrays of different scale", {
+  skip("Known issue #37: arrow::concat_arrays() reads 3.125 as 31.25.")
+  skip_if_not_installed("arrow")
+
+  combined <- tryCatch(
+    as.vector(arrow::concat_arrays(
+      arrow::as_arrow_array(decimal("1.25")),
+      arrow::as_arrow_array(decimal("3.125"))
+    )),
+    error = function(e) NULL
+  )
+  if (!is.null(combined)) {
+    expect_identical(combined, decimal(c("1.250", "3.125")))
+  }
+})
+
+test_that("arrange() over dataset parts of different scale never misreads", {
+  skip("Known issue #37: arrow's sort kernel can read 3.125 as 31.25.")
+  skip_if_no_dataset()
+  skip_if_not_installed("dplyr")
+
+  dir <- write_decimal_parts(
+    withr::local_tempdir(),
+    list(c("1.25", "2.50"), c("3.125", "4.5"))
+  )
+  out <- tryCatch(
+    dplyr::collect(dplyr::arrange(arrow::open_dataset(dir), id)),
+    error = function(e) NULL
+  )
+  if (!is.null(out)) {
+    expect_identical(out$x, decimal(c("1.250", "2.500", "3.125", "4.500")))
+  }
+})
+
 # Compatibility -------------------------------------------------------------
 
 test_that("files written by decimal 0.1.1 read back exactly", {

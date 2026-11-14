@@ -47,6 +47,26 @@ in memory, but \code{arrow::write_parquet()} rejects such a column only after it
 has opened, and so emptied, the destination file; the same holds for a
 table already carrying a decimal field whose scale exceeds its precision.
 }
+\section{Known issue}{
+ combining columns of different types:
+Combining decimal extension columns that arrow typed differently, with
+different scales or storage widths, can silently misread values (#37).
+This includes \code{arrow::concat_arrays()}, \code{arrow::concat_tables()} and
+\code{arrow::open_dataset()} over parts written separately, followed by
+\code{collect()} or \code{arrange()}. arrow compares two of this package's extension
+types by name alone, so it can reinterpret one part's stored integers at
+the other part's scale: 3.125 reads back as 31.25.
+
+\strong{Workaround:} pin one type with \code{\link[=arrow_decimal_type]{arrow_decimal_type()}} for every part
+that will be appended or combined.
+
+The package checks every chunk it converts and raises an error of class
+\code{decimal_arrow_chunk_error} for a column whose chunks differ in scale or
+width. Chunks that differ only in precision are combined exactly. A misread
+that arrow's own kernels have already produced, as in
+\code{arrow::concat_arrays()}, cannot be detected.
+}
+
 \section{Options}{
 
 \code{decimal.arrow_extension}: \code{TRUE} (the default) writes the extension type;

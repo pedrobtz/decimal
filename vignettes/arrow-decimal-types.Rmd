@@ -14,6 +14,9 @@ has_arrow <- requireNamespace("arrow", quietly = TRUE) &&
 knitr::opts_chunk$set(eval = has_arrow)
 # arrow can be built without Parquet support.
 has_parquet <- has_arrow && arrow::arrow_with_parquet()
+# arrow::write_dataset() builds its plan with dplyr.
+has_dataset <- has_parquet && arrow::arrow_with_dataset() &&
+  requireNamespace("dplyr", quietly = TRUE)
 ```
 
 ```{r, echo = FALSE, eval = !has_arrow, comment = NA}
@@ -31,6 +34,14 @@ The bridge between them is the **decimal string**. Both sides write and read
 one exactly, which makes it a lossless interchange format, and the package uses
 it in both directions for you. This vignette shows the crossings and where the
 two type systems don't quite line up.
+
+> **Known issue.** Combining decimal columns that arrow typed differently —
+> different scales or storage widths — can silently misread values. That
+> includes `arrow::concat_arrays()`, `arrow::concat_tables()` and
+> `arrow::open_dataset()` over parts written separately, followed by
+> `collect()` or `arrange()`. Pin one type with `arrow_decimal_type()` for
+> every part you will append or combine. See [Combining parts written
+> separately](#combining-parts-written-separately).
 
 ```{r setup}
 library(decimal)
@@ -241,6 +252,46 @@ as_decimal(t2$amount)
 
 ```{r, include = FALSE, eval = has_parquet}
 unlink(path)
+```
+
+### Combining parts written separately
+
+This is a known issue (#37) with no complete fix yet. When a column is
+written without a pinned type, its Arrow type follows the values: `1.25` is
+stored as `decimal128(3, 2)` and `3.125` as `decimal128(4, 3)`. arrow compares
+two of this package's extension types by name alone, so it treats those two
+types as equal. Combining them can then reinterpret one part's stored
+integers at the other part's scale, so that 3.125 reads back as 31.25, with no
+error. This can happen in `arrow::concat_arrays()`, in `arrow::concat_tables()`,
+and in `arrow::open_dataset()` over files written separately, when the
+results are collected, sorted or filtered.
+
+The package checks every chunk it converts. A column whose chunks carry
+different scales or widths raises an error of class
+`decimal_arrow_chunk_error` instead of being read. Chunks that differ only in
+precision are combined exactly. The package cannot see a misread that arrow's
+own kernels have already produced: `arrow::concat_arrays()`, and sometimes
+`arrange()` over a dataset, return the wrong values as one consistently
+typed array.
+
+The workaround is to pin one type for every part that will be appended to or
+combined with another:
+
+```{r, eval = has_dataset}
+dir <- tempfile()
+type <- arrow_decimal_type(20, 3)
+for (values in list(c("1.25", "2.50"), c("3.125", "4.5"))) {
+  part <- arrow::arrow_table(
+    x = arrow::as_arrow_array(decimal::decimal(values), type = type)
+  )
+  name <- paste0(values[1], "-{i}.parquet")
+  arrow::write_dataset(part, dir, basename_template = name)
+}
+sort(dplyr::collect(arrow::open_dataset(dir))$x)
+```
+
+```{r, include = FALSE, eval = has_dataset}
+unlink(dir, recursive = TRUE)
 ```
 
 ### Decimal columns written elsewhere

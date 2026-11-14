@@ -1,3 +1,13 @@
+# chunks of different scale or width are an error, not a misread
+
+    Code
+      as.data.frame(tab)
+    Condition
+      Error:
+      ! Chunk 2 of a decimal column is stored as `decimal128(4, 3)`, but the column's type is `decimal128(3, 2)`.
+      i arrow combined parts of different scale or width under one type, and some values would be misread.
+      i Pin one type with `arrow_decimal_type()` for every part that will be appended or combined.
+
 # a pinned type narrower than the values errors instead of wrapping
 
     Code
