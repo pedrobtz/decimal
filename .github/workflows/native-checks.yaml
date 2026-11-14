@@ -12,7 +12,8 @@ on:
       - ".github/workflows/native-checks.yaml"
       - ".github/valgrind.supp"
 
-  # The full set, including the asan containers, runs weekly.
+  # The full set runs weekly: gctorture at its full step, and the ASan
+  # containers below.
   schedule:
     - cron: "47 4 * * 1"
 
@@ -31,8 +32,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # UBSan runs on every pull request. AddressSanitizer, in the R-hub
+  # clang-asan and gcc-asan containers, is opt-in in r-actions and runs only
+  # under the full profile: the weekly schedule, a dispatch and a pull
+  # request labelled full-ci (#78).
   sanitizers:
     uses: pedrobtz/r-actions/.github/workflows/sanitizers.yml@v1
+    with:
+      asan: true
+      profile: auto
 
   valgrind:
     uses: pedrobtz/r-actions/.github/workflows/valgrind.yml@v1
