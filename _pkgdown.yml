@@ -24,6 +24,7 @@ reference:
       - normalize
       - fma
       - same_quantum
+      - decimal-summaries
       - summary.decimal
       - adjusted
       - number_class
