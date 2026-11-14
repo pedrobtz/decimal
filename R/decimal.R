@@ -785,6 +785,55 @@ vec_cast.default.decimal <- function(x, to, ..., x_arg = "", to_arg = "") {
   vctrs::vec_default_cast(x, to, ..., x_arg = x_arg, to_arg = to_arg)
 }
 
+# Base `pmax()` and `pmin()` are not generic. For classed input they build the
+# result with `[<-` and then reset its attributes to the first argument's, so a
+# later argument with a finer scale would leave values at that scale under the
+# first argument's `scale` attribute. `[<-` is the only hook they offer, so it
+# refuses the assignment when its caller is one of them. `..1` is their first
+# argument.
+decimal_check_parallel_extrema <- function(scale, frame) {
+  if (frame <= 0L) {
+    return(invisible())
+  }
+
+  caller <- sys.function(frame)
+  name <- if (identical(caller, base::pmax)) {
+    "pmax"
+  } else if (identical(caller, base::pmin)) {
+    "pmin"
+  } else {
+    return(invisible())
+  }
+
+  first <- eval(quote(..1), sys.frame(frame))
+  if (!is_decimal(first) || scale <= decimal_scale(first)) {
+    return(invisible())
+  }
+
+  rlang::abort(
+    c(
+      paste0(
+        "`",
+        name,
+        "()` can't take a decimal with a finer scale than its first argument."
+      ),
+      i = paste0(
+        "The first argument has scale ",
+        decimal_scale(first),
+        "; a later one has scale ",
+        scale,
+        "."
+      ),
+      i = paste0(
+        "Give every argument the same scale, for example with ",
+        "`as_decimal(x, scale = )`, or pass the finest-scaled one first."
+      )
+    ),
+    class = "decimal_parallel_extrema_scale",
+    call = rlang::call2(name)
+  )
+}
+
 #' @export
 `[<-.decimal` <- function(x, i, value) {
   # `x[] <- value` assigns to every element.
@@ -792,6 +841,7 @@ vec_cast.default.decimal <- function(x, to, ..., x_arg = "", to_arg = "") {
     i <- seq_along(x)
   }
   ptype <- vctrs::vec_ptype_common(x, value)
+  decimal_check_parallel_extrema(decimal_scale(ptype), sys.parent())
   x <- vctrs::vec_cast(x, ptype)
   value <- vctrs::vec_cast(value, ptype)
   # A base vector grows when assigned past its end, and `rbind()` on data frames

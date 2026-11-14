@@ -150,6 +150,12 @@ than through the decimal methods:
 - **`merge()`** matches a decimal key by value, so `2.5` matches `2.50`, but
   with `sort = TRUE`, the default, it orders the result by the key's text:
   `10` comes before `9`. Reorder the result with `order(xtfrm(key))`.
+- **`pmax()` and `pmin()`** give the result the first argument's attributes.
+  With a decimal first they compare values correctly, but they stop with an
+  error when a later argument has a finer scale, because the result would
+  carry the first argument's scale. Give every argument the same scale first,
+  or pass the finest-scaled one first. When the first argument is not a
+  decimal, `pmax(2L, x)`, they return a character vector.
 
 ### In a data.table
 

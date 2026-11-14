@@ -1,3 +1,13 @@
+# pmax() and pmin() refuse a later argument with a finer scale
+
+    Code
+      pmax(x, y)
+    Condition
+      Error in `pmax()`:
+      ! `pmax()` can't take a decimal with a finer scale than its first argument.
+      i The first argument has scale 0; a later one has scale 1.
+      i Give every argument the same scale, for example with `as_decimal(x, scale = )`, or pass the finest-scaled one first.
+
 # a quantize trap on a special value does not blame the precision
 
     Code

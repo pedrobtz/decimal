@@ -303,6 +303,45 @@ test_that("is.unsorted() orders decimal values, not their text", {
   expect_true(is.unsorted(decimal(c("10", "NaN", "9")), na.rm = TRUE))
 })
 
+test_that("pmax() and pmin() return consistent decimals", {
+  x <- decimal(c("10.0", "9.0", NA))
+  y <- decimal(c("9.5", "9.5", "9.5"))
+
+  expect_identical(pmax(x, y), decimal(c("10.0", "9.5", NA)))
+  expect_identical(pmin(x, y), decimal(c("9.5", "9.0", NA)))
+  expect_identical(pmax(x, y, na.rm = TRUE), decimal(c("10.0", "9.5", "9.5")))
+  expect_identical(pmin(x, y, na.rm = TRUE), decimal(c("9.5", "9.0", "9.5")))
+  expect_identical(
+    pmax(decimal(c("1.0", "5.0", "3.0")), decimal("2.0")),
+    decimal(c("2.0", "5.0", "3.0"))
+  )
+
+  # A coarser later argument widens to the first argument's scale.
+  expect_identical(
+    pmax(decimal(c("9.5", "1.25")), decimal(c("10", "1"))),
+    decimal(c("10.00", "1.25"))
+  )
+  expect_identical(
+    pmin(decimal(c("9.5", NA)), decimal(c(NA, "10")), na.rm = TRUE),
+    decimal(c("9.5", "10.0"))
+  )
+})
+
+test_that("pmax() and pmin() refuse a later argument with a finer scale", {
+  x <- decimal(c("10", "9"))
+  y <- decimal(c("9.5", "9.5"))
+
+  # Base pmax() resets the result's attributes to the first argument's, which
+  # would label values held at scale 1 as scale 0.
+  expect_snapshot(error = TRUE, pmax(x, y))
+  expect_error(pmin(x, y), class = "decimal_parallel_extrema_scale")
+  expect_error(
+    pmax(x, decimal("1.5"), 2L),
+    class = "decimal_parallel_extrema_scale"
+  )
+  expect_identical(pmax(y, x), decimal(c("10.0", "9.5")))
+})
+
 test_that("rounding functions pass infinities and quiet NaNs through", {
   x <- decimal(c("1.5", "Infinity", "-Infinity", "NaN", "NaN123", NA))
   specials <- c("Infinity", "-Infinity", "NaN", "NaN123", NA)

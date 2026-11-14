@@ -22,6 +22,14 @@
   vignette now notes that `merge()` orders its result by a decimal key's text
   (#57).
 
+- `pmax()` and `pmin()` now refuse a decimal argument whose scale is finer
+  than the first argument's (#48). Base R gives the result the first
+  argument's attributes, so `pmax(decimal(c("10", "9")), decimal("9.5"))`
+  returned values held at one decimal place under a `scale` of zero. The
+  error suggests giving the arguments one scale. These functions are not
+  generic, so with a non-decimal first argument they still return a character
+  vector.
+
 # decimal 0.1.1
 
 - `decimal` vectors now convert to and from 'Arrow' decimal arrays directly.
