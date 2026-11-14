@@ -34,6 +34,44 @@
   configuration did not recognise the `wasm32` target and stopped with
   “unsupported platform”.
 
+- `options(decimal.default_scale = )` no longer leaks into the package’s
+  own conversions
+  ([\#43](https://github.com/pedrobtz/decimal/issues/43)). It is the
+  default scale for
+  [`decimal()`](https://pedrobtz.github.io/decimal/dev/reference/decimal.md)
+  and
+  [`as_decimal()`](https://pedrobtz.github.io/decimal/dev/reference/as_decimal.md)
+  on character, integer and double input, but integer operands, rounding
+  quantums, counts and constants picked it up too. Under
+  `default_scale = 2`, `round(x, 3)` and `quantize(x, "0.001")` returned
+  two digits and `x * 3L` gained two extra; under `default_scale = -2`,
+  `x + 150L` added 200, `x * 3L` gave 0, `mean(x)` trapped
+  `division_by_zero` and
+  [`summary()`](https://rdrr.io/r/base/summary.html) reported no missing
+  values; under `default_scale = 0`,
+  [`summary()`](https://rdrr.io/r/base/summary.html) quartiles were
+  wrong. Integers and character operands now convert exactly at the
+  scale their value gives.
+
+- [`as_decimal()`](https://pedrobtz.github.io/decimal/dev/reference/as_decimal.md)
+  on a `decimal` vector without `scale` now returns it unchanged, rather
+  than rescaling it to `decimal.default_scale`. Arrow decimal arrays
+  likewise keep the scale of their Arrow type under that option, in
+  [`as_decimal()`](https://pedrobtz.github.io/decimal/dev/reference/as_decimal.md),
+  [`arrow_as_data_frame()`](https://pedrobtz.github.io/decimal/dev/reference/arrow_as_data_frame.md),
+  [`as.data.frame()`](https://rdrr.io/r/base/as.data.frame.html) and
+  [`arrow::read_parquet()`](https://arrow.apache.org/docs/r/reference/read_parquet.html);
+  before, with `default_scale = 1`, 1.25 and 2.75 read back as 1.2 and
+  2.8 ([\#43](https://github.com/pedrobtz/decimal/issues/43)).
+
+- [`summary()`](https://rdrr.io/r/base/summary.html) quartiles no longer
+  depend on `options(digits)`, `OutDec`, `scipen` or the numeric locale
+  ([\#44](https://github.com/pedrobtz/decimal/issues/44)). The
+  interpolation weight was built by formatting a double, so
+  `options(digits = 1)` gave a 1st quartile of 1.8 for `c(1, 2, 4, 7.1)`
+  instead of 1.75, and `OutDec = ","` raised an error. The weight is now
+  chosen from exact text. \|\|\|\|\|\|\| 11134d5
+
 - [`arrow::as_arrow_array()`](https://arrow.apache.org/docs/r/reference/as_arrow_array.html)
   now refuses a value wider than a pinned decimal type with an error of
   class `decimal_arrow_precision_error`, naming the digits the value
