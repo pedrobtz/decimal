@@ -331,6 +331,99 @@ test_that("assigning with an empty index replaces every element", {
   expect_identical(empty, decimal())
 })
 
+test_that("`[[<-` widens to a finer value's scale, like `[<-` (#50)", {
+  y <- decimal(c("1.50", "2.25"))
+  y[[2]] <- decimal("9.123")
+  expect_identical(y, decimal(c("1.500", "9.123")))
+
+  z <- decimal(c("1.50", "2.25"))
+  z[2] <- decimal("9.123")
+  expect_identical(z, y)
+
+  named <- decimal(c(a = "1.5", b = "2.5"))
+  named[["b"]] <- decimal("0.125")
+  expect_identical(named, decimal(c(a = "1.500", b = "0.125")))
+
+  coarse <- decimal(c("1.50", "2.25"))
+  coarse[[1]] <- 3L
+  expect_identical(coarse, decimal(c("3.00", "2.25")))
+  coarse[[2]] <- decimal("Infinity")
+  expect_identical(coarse, decimal(c("3.00", "Infinity")))
+  coarse[[1]] <- NA
+  expect_identical(coarse, decimal(c(NA, "Infinity"), scale = 2L))
+
+  expect_error(y[[1]] <- 0.5, class = "vctrs_error_incompatible_type")
+})
+
+test_that("casting to a coarser decimal is a lossy cast (#50)", {
+  to <- decimal("1.0")
+
+  expect_error(
+    vctrs::vec_cast(decimal(c("1.25", "1.55")), to),
+    class = "vctrs_error_cast_lossy"
+  )
+  expect_snapshot(vctrs::vec_cast(decimal("1.55"), to), error = TRUE)
+  expect_identical(
+    vctrs::allow_lossy_cast(vctrs::vec_cast(decimal("1.55"), to)),
+    decimal("1.6")
+  )
+
+  # Dropping zeros loses no value, and specials have no digits to lose.
+  expect_identical(
+    vctrs::vec_cast(decimal(c("1.50", "-0.00", NA, "NaN", "-Infinity")), to),
+    decimal(c("1.5", "-0.0", NA, "NaN", "-Infinity"))
+  )
+  expect_identical(
+    vctrs::vec_cast(decimal("1.5"), decimal("1.000")),
+    decimal("1.500")
+  )
+  expect_identical(
+    vctrs::vec_cast(decimal("150"), decimal("1E+1", scale = -1L)),
+    decimal("150", scale = -1L)
+  )
+  expect_error(
+    vctrs::vec_cast(decimal("155"), decimal("1E+1", scale = -1L)),
+    class = "vctrs_error_cast_lossy"
+  )
+})
+
+test_that("combining decimals of different scales takes the finer one (#50)", {
+  a <- decimal(c("1.5", NA))
+  b <- decimal("0.125")
+
+  expect_identical(vctrs::vec_c(a, b), decimal(c("1.500", NA, "0.125")))
+  expect_identical(vctrs::vec_c(b, a), decimal(c("0.125", "1.500", NA)))
+  expect_identical(
+    rbind(data.frame(x = a), data.frame(x = b))$x,
+    decimal(c("1.500", NA, "0.125"))
+  )
+
+  skip_if_not_installed("dplyr")
+  expect_identical(dplyr::coalesce(a, b), decimal(c("1.500", "0.125")))
+  expect_identical(
+    dplyr::if_else(c(TRUE, FALSE), a, b),
+    decimal(c("1.500", "0.125"))
+  )
+  expect_identical(
+    dplyr::bind_rows(data.frame(x = a), data.frame(x = b))$x,
+    decimal(c("1.500", NA, "0.125"))
+  )
+})
+
+test_that("tidyr::replace_na() refuses a replacement it would round (#50)", {
+  skip_if_not_installed("tidyr")
+  x <- decimal(c(NA, "1.5"))
+
+  expect_error(
+    tidyr::replace_na(x, decimal("0.125")),
+    class = "vctrs_error_cast_lossy"
+  )
+  expect_identical(
+    tidyr::replace_na(x, decimal("0.100")),
+    decimal(c("0.1", "1.5"))
+  )
+})
+
 test_that("match() and %in% compare values, not their scales", {
   x <- decimal(c("2.5", "20", "0", NA))
   table <- decimal(c("20.00", "2.50", "-0.00", NA))

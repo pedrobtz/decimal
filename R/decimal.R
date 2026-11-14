@@ -711,9 +711,35 @@ vec_ptype2.default.decimal <- function(x, y, ..., x_arg = "", y_arg = "") {
   vctrs::vec_default_ptype2(x, y, ..., x_arg = x_arg, y_arg = y_arg)
 }
 
+# A finer scale only appends zeros. A coarser one rounds, so an element whose
+# value changes makes the cast lossy, which `allow_lossy_cast()` permits.
 #' @export
-vec_cast.decimal.decimal <- function(x, to, ...) {
-  decimal_set_scale(x, decimal_scale(to))
+vec_cast.decimal.decimal <- function(
+  x,
+  to,
+  ...,
+  x_arg = "",
+  to_arg = "",
+  call = rlang::caller_env()
+) {
+  from_scale <- decimal_scale(x)
+  to_scale <- decimal_scale(to)
+  out <- decimal_set_scale(x, to_scale)
+  if (to_scale >= from_scale) {
+    return(out)
+  }
+
+  values <- vctrs::vec_data(x)
+  lossy <- decimal_rescale_strings(vctrs::vec_data(out), from_scale) != values
+  vctrs::maybe_lossy_cast(
+    out,
+    x,
+    to,
+    lossy = !is.na(lossy) & lossy,
+    x_arg = x_arg,
+    to_arg = to_arg,
+    call = call
+  )
 }
 
 #' @export
@@ -796,6 +822,16 @@ vec_cast.default.decimal <- function(x, to, ..., x_arg = "", to_arg = "") {
     }
   }
   vctrs::vec_assign(x, i, value)
+}
+
+# The `vctrs_vctr` method casts `value` to the type of `x`, which would round a
+# finer value. Widen both to the common scale first, as `[<-` does.
+#' @export
+`[[<-.decimal` <- function(x, ..., value) {
+  ptype <- vctrs::vec_ptype_common(x, value)
+  x <- vctrs::vec_cast(x, ptype)
+  value <- vctrs::vec_cast(value, ptype)
+  NextMethod()
 }
 
 # `match()`, `%in%` and base `merge()` compare what `mtfrm()` returns. The

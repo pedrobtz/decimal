@@ -54,6 +54,22 @@
   gave -1.20 before -1.25, because the order proxy was text that sorted
   correctly only byte by byte. It is now an integer rank. `sort()`, `order()`,
   `rank()` and `dplyr::arrange()` without `.locale` were already correct.
+
+- `x[[i]] <- value` now widens `x` to the scale of a finer `value`, as
+  `x[i] <- value` always did, instead of silently rounding: `y[[2]] <-
+  decimal("9.123")` on a scale-2 `y` used to store 9.12 (#50).
+
+- Behaviour change: `vctrs::vec_cast()` from a decimal to a coarser decimal
+  type is now a lossy cast. When rounding would change a value it raises an
+  error of class `vctrs_error_cast_lossy`, which `vctrs::allow_lossy_cast()`
+  turns back into rounding; before, `vec_cast(decimal("1.55"),
+  decimal("1.0"))` silently gave 1.6. Dropping trailing zeros, `NA` and
+  special values still casts. This reaches functions that cast a replacement
+  to an existing column: `tidyr::replace_na(decimal(c(NA, "1.5")),
+  decimal("0.125"))` now errors rather than filling in 0.1. Combining vectors
+  of different scales (`c()`, `vec_c()`, `rbind()`, `dplyr::bind_rows()`,
+  `dplyr::if_else()`, `dplyr::coalesce()`) still takes the finer scale, and
+  `as_decimal(x, scale = )` still rounds on request (#50).
 ||||||| 11134d5
 
 - `arrow::as_arrow_array()` now refuses a value wider than a pinned decimal
