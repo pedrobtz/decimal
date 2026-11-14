@@ -19,7 +19,7 @@ the decimal.default_scale option before quantization."></head><body>
 
     <a class="navbar-brand me-2" href="../index.html">decimal</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Released version">0.1.1</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Released version">0.1.2</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -89,7 +89,10 @@ integer part (e.g. <code>scale = -2</code> rounds to the nearest hundred).</p></
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
     <p>When <code>scale</code> is <code>NULL</code>, <code>getOption("decimal.default_scale")</code> is used when
 set. Otherwise, character input infers the largest number of fractional
-digits present in <code>x</code>, and integer input uses scale zero. Because scale is
+digits present in <code>x</code>, and integer input uses scale zero. A decimal <code>x</code> is
+returned unchanged. The option is a default for these conversions only:
+operations such as arithmetic with an integer, <code><a href="https://rdrr.io/r/base/Round.html" class="external-link">round()</a></code>, <code><a href="quantize.html">quantize()</a></code> and
+<code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code> never consult it. Because scale is
 a property of the vector, not the element, <code>decimal("1.2") == decimal("1.20")</code>, and combining them yields one uniformly scaled vector.</p>
     </div>
 

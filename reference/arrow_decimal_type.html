@@ -19,7 +19,7 @@ arrow::decimal256() above that."></head><body>
 
     <a class="navbar-brand me-2" href="../index.html">decimal</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Released version">0.1.1</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Released version">0.1.2</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -71,11 +71,12 @@ example through the <code>schema</code> argument of <code><a href="https://arrow
 
 
 <dl><dt id="arg-precision">precision<a class="anchor" aria-label="anchor" href="#arg-precision"></a></dt>
-<dd><p>Total number of digits, at most 76.</p></dd>
+<dd><p>Total number of digits, from 1 to 76.</p></dd>
 
 
 <dt id="arg-scale">scale<a class="anchor" aria-label="anchor" href="#arg-scale"></a></dt>
-<dd><p>Number of fractional digits.</p></dd>
+<dd><p>Number of fractional digits, at most <code>precision</code>. A negative
+scale is accepted for in-memory use, but Parquet cannot store it.</p></dd>
 
 </dl></div>
     <div class="section level2">

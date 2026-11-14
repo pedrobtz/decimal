@@ -36,7 +36,12 @@ A `decimal` vector.
 
 When `scale` is `NULL`, `getOption("decimal.default_scale")` is used
 when set. Otherwise, character input infers the largest number of
-fractional digits present in `x`, and integer input uses scale zero.
+fractional digits present in `x`, and integer input uses scale zero. A
+decimal `x` is returned unchanged. The option is a default for these
+conversions only: operations such as arithmetic with an integer,
+[`round()`](https://rdrr.io/r/base/Round.html),
+[`quantize()`](https://pedrobtz.github.io/decimal/reference/quantize.md)
+and [`summary()`](https://rdrr.io/r/base/summary.html) never consult it.
 Because scale is a property of the vector, not the element,
 `decimal("1.2") == decimal("1.20")`, and combining them yields one
 uniformly scaled vector.

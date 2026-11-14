@@ -26,9 +26,16 @@ because arrow reapplies the column's recorded R attributes; the package
 refuses to format such an object. Read those tables with
 arrow_as_data_frame().
 Infinities and NaNs have no Arrow decimal representation and raise an error
-on conversion to Arrow. Arrow accepts a negative scale but Parquet does not,
-so rescale such a vector with as_decimal(x, scale = 0) before
-arrow::write_parquet()."><meta property="og:description" content="decimal vectors convert to and from Arrow decimal arrays exactly, in both
+on conversion to Arrow. A value wider than a pinned type raises an error of
+class decimal_arrow_precision_error, never a rounded or wrapped value.
+Negative zero has no Arrow representation either and becomes zero: -0.00
+reads back as 0.00.
+Arrow accepts a negative scale but Parquet does not, so a vector with a
+negative scale is written at scale 0, which holds the same values exactly,
+and reads back with scale 0. A negative scale pinned through type is kept
+in memory, but arrow::write_parquet() rejects such a column only after it
+has opened, and so emptied, the destination file; the same holds for a
+table already carrying a decimal field whose scale exceeds its precision."><meta property="og:description" content="decimal vectors convert to and from Arrow decimal arrays exactly, in both
 directions, when the arrow package is installed.
 Arrow to decimal. as_decimal() accepts an Arrow Array or
 ChunkedArray. A decimal32(), decimal64(), decimal128() or
@@ -55,9 +62,16 @@ because arrow reapplies the column's recorded R attributes; the package
 refuses to format such an object. Read those tables with
 arrow_as_data_frame().
 Infinities and NaNs have no Arrow decimal representation and raise an error
-on conversion to Arrow. Arrow accepts a negative scale but Parquet does not,
-so rescale such a vector with as_decimal(x, scale = 0) before
-arrow::write_parquet()."></head><body>
+on conversion to Arrow. A value wider than a pinned type raises an error of
+class decimal_arrow_precision_error, never a rounded or wrapped value.
+Negative zero has no Arrow representation either and becomes zero: -0.00
+reads back as 0.00.
+Arrow accepts a negative scale but Parquet does not, so a vector with a
+negative scale is written at scale 0, which holds the same values exactly,
+and reads back with scale 0. A negative scale pinned through type is kept
+in memory, but arrow::write_parquet() rejects such a column only after it
+has opened, and so emptied, the destination file; the same holds for a
+table already carrying a decimal field whose scale exceeds its precision."></head><body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
 
 
@@ -65,7 +79,7 @@ arrow::write_parquet()."></head><body>
 
     <a class="navbar-brand me-2" href="../index.html">decimal</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Released version">0.1.1</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Released version">0.1.2</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -125,12 +139,37 @@ because arrow reapplies the column's recorded R attributes; the package
 refuses to format such an object. Read those tables with
 <code><a href="arrow_as_data_frame.html">arrow_as_data_frame()</a></code>.</p>
 <p>Infinities and NaNs have no Arrow decimal representation and raise an error
-on conversion to Arrow. Arrow accepts a negative scale but Parquet does not,
-so rescale such a vector with <code>as_decimal(x, scale = 0)</code> before
-<code><a href="https://arrow.apache.org/docs/r/reference/write_parquet.html" class="external-link">arrow::write_parquet()</a></code>.</p>
+on conversion to Arrow. A value wider than a pinned type raises an error of
+class <code>decimal_arrow_precision_error</code>, never a rounded or wrapped value.
+Negative zero has no Arrow representation either and becomes zero: <code>-0.00</code>
+reads back as <code>0.00</code>.</p>
+<p>Arrow accepts a negative scale but Parquet does not, so a vector with a
+negative scale is written at scale 0, which holds the same values exactly,
+and reads back with scale 0. A negative scale pinned through <code>type</code> is kept
+in memory, but <code><a href="https://arrow.apache.org/docs/r/reference/write_parquet.html" class="external-link">arrow::write_parquet()</a></code> rejects such a column only after it
+has opened, and so emptied, the destination file; the same holds for a
+table already carrying a decimal field whose scale exceeds its precision.</p>
     </div>
 
 
+    <div class="section level2">
+    <h2 id="known-issue">Known issue<a class="anchor" aria-label="anchor" href="#known-issue"></a></h2>
+    <p>combining columns of different types:
+Combining decimal extension columns that arrow typed differently, with
+different scales or storage widths, can silently misread values (#37).
+This includes <code><a href="https://arrow.apache.org/docs/r/reference/concat_arrays.html" class="external-link">arrow::concat_arrays()</a></code>, <code><a href="https://arrow.apache.org/docs/r/reference/concat_tables.html" class="external-link">arrow::concat_tables()</a></code> and
+<code><a href="https://arrow.apache.org/docs/r/reference/open_dataset.html" class="external-link">arrow::open_dataset()</a></code> over parts written separately, followed by
+<code><a href="https://dplyr.tidyverse.org/reference/compute.html" class="external-link">collect()</a></code> or <code><a href="https://dplyr.tidyverse.org/reference/arrange.html" class="external-link">arrange()</a></code>. arrow compares two of this package's extension
+types by name alone, so it can reinterpret one part's stored integers at
+the other part's scale: 3.125 reads back as 31.25.</p>
+<p><strong>Workaround:</strong> pin one type with <code><a href="arrow_decimal_type.html">arrow_decimal_type()</a></code> for every part
+that will be appended or combined.</p>
+<p>The package checks every chunk it converts and raises an error of class
+<code>decimal_arrow_chunk_error</code> for a column whose chunks differ in scale or
+width. Chunks that differ only in precision are combined exactly. A misread
+that arrow's own kernels have already produced, as in
+<code><a href="https://arrow.apache.org/docs/r/reference/concat_arrays.html" class="external-link">arrow::concat_arrays()</a></code>, cannot be detected.</p>
+    </div>
     <div class="section level2">
     <h2 id="options">Options<a class="anchor" aria-label="anchor" href="#options"></a></h2>
 

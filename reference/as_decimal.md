@@ -2,11 +2,11 @@
 
 `as_decimal()` is the conversion generic for decimal vectors. Character
 values are parsed exactly, integer values are converted exactly, and
-existing decimal vectors are returned or rescaled. Promotion to a finer
-shared scale is exact and context-free; reduction to a coarser scale is
-quantized. Double values are decoded from their exact IEEE 754
-representation and therefore require an explicit or globally configured
-scale before quantization.
+existing decimal vectors are returned unchanged, or rescaled when
+`scale` is given. Promotion to a finer shared scale is exact and
+context-free; reduction to a coarser scale is quantized. Double values
+are decoded from their exact IEEE 754 representation and therefore
+require an explicit or globally configured scale before quantization.
 
 ## Usage
 
@@ -53,10 +53,12 @@ A `decimal` vector.
 
 ## Details
 
-When `scale` is `NULL`, `getOption("decimal.default_scale")` is used
-when set. Without that option, character input uses the largest number
-of fractional digits found in the input, integer input uses scale zero,
-and double input raises an error. Quantization uses the active
+When `scale` is `NULL`, `getOption("decimal.default_scale")` is used for
+character, integer and double input when set. Without that option,
+character input uses the largest number of fractional digits found in
+the input, integer input uses scale zero, and double input raises an
+error. A decimal vector or an Arrow decimal array already has a scale
+and keeps it; the option does not apply. Quantization uses the active
 [`decimal_context()`](https://pedrobtz.github.io/decimal/reference/decimal_context.md).
 
 An Arrow `Array` or `ChunkedArray` of any decimal type converts exactly,

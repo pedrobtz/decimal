@@ -23,6 +23,12 @@
   multiply-add
 - [`same_quantum()`](https://pedrobtz.github.io/decimal/reference/same_quantum.md)
   : Compare decimal vector scales
+- [`mean(`*`<decimal>`*`)`](https://pedrobtz.github.io/decimal/reference/decimal-summaries.md)
+  [`Summary(`*`<decimal>`*`)`](https://pedrobtz.github.io/decimal/reference/decimal-summaries.md)
+  [`range(`*`<decimal>`*`)`](https://pedrobtz.github.io/decimal/reference/decimal-summaries.md)
+  [`min(`*`<decimal>`*`)`](https://pedrobtz.github.io/decimal/reference/decimal-summaries.md)
+  [`max(`*`<decimal>`*`)`](https://pedrobtz.github.io/decimal/reference/decimal-summaries.md)
+  : Summaries of decimal vectors
 - [`summary(`*`<decimal>`*`)`](https://pedrobtz.github.io/decimal/reference/summary.decimal.md)
   : Summarize a decimal vector
 - [`adjusted()`](https://pedrobtz.github.io/decimal/reference/adjusted.md)

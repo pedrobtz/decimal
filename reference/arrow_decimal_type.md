@@ -23,11 +23,12 @@ arrow_decimal_type(precision, scale = 0L)
 
 - precision:
 
-  Total number of digits, at most 76.
+  Total number of digits, from 1 to 76.
 
 - scale:
 
-  Number of fractional digits.
+  Number of fractional digits, at most `precision`. A negative scale is
+  accepted for in-memory use, but Parquet cannot store it.
 
 ## Value
 

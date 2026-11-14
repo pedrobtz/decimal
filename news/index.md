@@ -1,6 +1,271 @@
 # Changelog
 
+## decimal 0.1.2
+
+### Known issues
+
+- Combining decimal Arrow columns of different scales or storage widths
+  can silently misread values: 3.125 can come back as 31.25. This
+  affects
+  [`arrow::concat_arrays()`](https://arrow.apache.org/docs/r/reference/concat_arrays.html),
+  [`arrow::concat_tables()`](https://arrow.apache.org/docs/r/reference/concat_tables.html)
+  and
+  [`arrow::open_dataset()`](https://arrow.apache.org/docs/r/reference/open_dataset.html)
+  over parts written separately, followed by
+  [`collect()`](https://dplyr.tidyverse.org/reference/compute.html) or
+  [`arrange()`](https://dplyr.tidyverse.org/reference/arrange.html),
+  because arrow compares this package’s extension types by name alone.
+  Until this is fixed, pin one type with
+  [`arrow_decimal_type()`](https://pedrobtz.github.io/decimal/reference/arrow_decimal_type.md)
+  for every part that will be appended or combined
+  ([\#37](https://github.com/pedrobtz/decimal/issues/37)). The fix
+  depends on arrow
+  ([apache/arrow#55605](https://github.com/apache/arrow/issues/55605)).
+
+- [`merge()`](https://rdrr.io/r/base/merge.html) orders its result by a
+  decimal key’s stored text, so
+  [`merge()`](https://rdrr.io/r/base/merge.html) on a key column can put
+  “10” before “9”. The “Decimal values” vignette notes this; sort the
+  result afterwards with [`order()`](https://rdrr.io/r/base/order.html)
+  or
+  [`dplyr::arrange()`](https://dplyr.tidyverse.org/reference/arrange.html),
+  which compare values
+  ([\#57](https://github.com/pedrobtz/decimal/issues/57)).
+
+### Behaviour changes
+
+- [`as_decimal()`](https://pedrobtz.github.io/decimal/reference/as_decimal.md)
+  on a `decimal` vector without `scale` now returns it unchanged, rather
+  than rescaling it to `decimal.default_scale`. Arrow decimal arrays
+  likewise keep the scale of their Arrow type under that option, in
+  [`as_decimal()`](https://pedrobtz.github.io/decimal/reference/as_decimal.md),
+  [`arrow_as_data_frame()`](https://pedrobtz.github.io/decimal/reference/arrow_as_data_frame.md),
+  [`as.data.frame()`](https://rdrr.io/r/base/as.data.frame.html) and
+  [`arrow::read_parquet()`](https://arrow.apache.org/docs/r/reference/read_parquet.html);
+  before, with `default_scale = 1`, 1.25 and 2.75 read back as 1.2 and
+  2.8 ([\#43](https://github.com/pedrobtz/decimal/issues/43)).
+
+- [`vctrs::vec_cast()`](https://vctrs.r-lib.org/reference/vec_cast.html)
+  from a decimal to a coarser decimal type is now a lossy cast. When
+  rounding would change a value it raises an error of class
+  `vctrs_error_cast_lossy`, which
+  [`vctrs::allow_lossy_cast()`](https://vctrs.r-lib.org/reference/vctrs-conditions.html)
+  turns back into rounding; before,
+  `vec_cast(decimal("1.55"), decimal("1.0"))` silently gave 1.6.
+  Dropping trailing zeros, `NA` and special values still casts. This
+  reaches functions that cast a replacement to an existing column:
+  `tidyr::replace_na(decimal(c(NA, "1.5")), decimal("0.125"))` now
+  errors rather than filling in 0.1. Combining vectors of different
+  scales ([`c()`](https://rdrr.io/r/base/c.html), `vec_c()`,
+  [`rbind()`](https://rdrr.io/r/base/cbind.html),
+  [`dplyr::bind_rows()`](https://dplyr.tidyverse.org/reference/bind_rows.html),
+  [`dplyr::if_else()`](https://dplyr.tidyverse.org/reference/if_else.html),
+  [`dplyr::coalesce()`](https://dplyr.tidyverse.org/reference/coalesce.html))
+  still takes the finer scale, and `as_decimal(x, scale = )` still
+  rounds on request
+  ([\#50](https://github.com/pedrobtz/decimal/issues/50)).
+
+- [`vctrs::vec_cast()`](https://vctrs.r-lib.org/reference/vec_cast.html)
+  from character to a decimal type now uses that type’s scale
+  ([\#51](https://github.com/pedrobtz/decimal/issues/51)).
+  `vec_c("1.123", "2", .ptype = decimal("1.0"))` used to return a vector
+  labelled scale 1 that stored “1.123” and “2” unchanged. Text with
+  fewer digits is padded exactly; text that would be rounded is a lossy
+  cast, as for a coarser decimal, so `vec_cast("1.23", decimal())` now
+  errors.
+  [`decimal()`](https://pedrobtz.github.io/decimal/reference/decimal.md)
+  and
+  [`as_decimal()`](https://pedrobtz.github.io/decimal/reference/as_decimal.md)
+  still infer the scale from the text.
+
+### Bug fixes
+
+- [`as.double()`](https://rdrr.io/r/base/double.html) and casts to
+  double are now correctly rounded. They went through R’s internal
+  string parser, which can be off by one unit in the last place
+  (`decimal("83E25")`, `decimal("1e23", scale = 15)`), returned `Inf`
+  for `1.7976931348623158E+308` instead of the largest double, and gave
+  `NaN` or `Inf` once a value had more than about 4932 digits, as any
+  value in a vector with `scale = 5000` does. Each result is now checked
+  exactly against the midpoints to its neighbouring doubles, so it no
+  longer depends on the platform’s C library, and the conversion is
+  tested against nearly 4,000 values computed by Python
+  ([\#45](https://github.com/pedrobtz/decimal/issues/45)).
+
+- [`decimal()`](https://pedrobtz.github.io/decimal/reference/decimal.md)
+  and
+  [`as_decimal()`](https://pedrobtz.github.io/decimal/reference/as_decimal.md)
+  now refuse a value whose scale, its fractional digits minus its
+  exponent, lies outside integer range, such as `"1E-2147483650"`,
+  instead of storing it with the wrong scale. A value whose exponent
+  alone is out of range but whose scale is not, such as
+  `"1.5e+2147483648"`, is now accepted
+  ([\#52](https://github.com/pedrobtz/decimal/issues/52)).
+
+- [`adjusted()`](https://pedrobtz.github.io/decimal/reference/adjusted.md)
+  now raises its “out of integer range” error for an adjusted exponent
+  of -2147483648 instead of returning `NA`
+  ([\#54](https://github.com/pedrobtz/decimal/issues/54)).
+
+- The native routines now check the type and length of every context
+  argument and raise an error for a malformed one, instead of crashing R
+  when called directly through
+  [`.Call()`](https://rdrr.io/r/base/CallExternal.html) with a
+  zero-length vector
+  ([\#41](https://github.com/pedrobtz/decimal/issues/41)).
+
+- Converting an Arrow column whose chunks carry different decimal
+  storage now checks every chunk. Chunks that differ only in precision,
+  such as dataset parts whose values had different magnitudes, now
+  combine exactly, where arrow used to fail with “Array chunks must all
+  be same type”. Chunks that differ in scale or width raise an error of
+  class `decimal_arrow_chunk_error` instead of being misread. This is
+  the part of [\#37](https://github.com/pedrobtz/decimal/issues/37) the
+  package can fix; the rest is under Known issues.
+
+- The bundled ‘mpdecimal’ now builds for WebAssembly (webR). Its
+  configuration did not recognise the `wasm32` target and stopped with
+  “unsupported platform”.
+
+- [`floor()`](https://rdrr.io/r/base/Round.html),
+  [`ceiling()`](https://rdrr.io/r/base/Round.html),
+  [`trunc()`](https://rdrr.io/r/base/Round.html),
+  [`round()`](https://rdrr.io/r/base/Round.html) and
+  [`signif()`](https://rdrr.io/r/base/Round.html) now return infinities
+  and quiet NaNs unchanged, payload included, and raise no signal, as
+  base R and Python’s `Decimal.to_integral_value()` do
+  ([\#49](https://github.com/pedrobtz/decimal/issues/49)).
+  [`signif()`](https://rdrr.io/r/base/Round.html) turned them into `NA`,
+  and the others trapped `invalid_operation`. A signaling NaN still
+  raises `invalid_operation`. A
+  [`quantize()`](https://pedrobtz.github.io/decimal/reference/quantize.md)
+  trap on a special value no longer suggests raising the context
+  precision.
+
+- [`mean()`](https://rdrr.io/r/base/mean.html) on a `decimal` vector now
+  honours `trim`, which it silently ignored
+  ([\#53](https://github.com/pedrobtz/decimal/issues/53)). It drops
+  `floor(n * trim)` values from each end of the sorted vector, as
+  [`mean.default()`](https://rdrr.io/r/base/mean.html) does, and returns
+  the median once `trim` reaches 0.5.
+
+- [`is.unsorted()`](https://rdrr.io/r/base/is.unsorted.html) now
+  compares decimal values, honouring `strictly` and `na.rm`, instead of
+  the stored text, which made `is.unsorted(decimal(c("9", "10")))`
+  `TRUE` ([\#47](https://github.com/pedrobtz/decimal/issues/47)).
+
+- [`pmax()`](https://rdrr.io/r/base/Extremes.html) and
+  [`pmin()`](https://rdrr.io/r/base/Extremes.html) now refuse a decimal
+  argument whose scale is finer than the first argument’s
+  ([\#48](https://github.com/pedrobtz/decimal/issues/48)). Base R gives
+  the result the first argument’s attributes, so
+  `pmax(decimal(c("10", "9")), decimal("9.5"))` returned values held at
+  one decimal place under a `scale` of zero. Bring the arguments to a
+  common scale first, as in `pmax(as_decimal(x, scale = 1), y)`, or put
+  the finest-scaled argument first. These functions are not generic, so
+  with a non-decimal first argument they still return a character
+  vector: write `pmax(x, 2L)` or `pmax(as_decimal(2L), x)` rather than
+  `pmax(2L, x)`.
+
+- New `?decimal-summaries` documents
+  [`sum()`](https://rdrr.io/r/base/sum.html),
+  [`prod()`](https://rdrr.io/r/base/prod.html),
+  [`mean()`](https://rdrr.io/r/base/mean.html),
+  [`min()`](https://rdrr.io/r/base/Extremes.html),
+  [`max()`](https://rdrr.io/r/base/Extremes.html) and
+  [`range()`](https://rdrr.io/r/base/range.html) for `decimal` vectors,
+  including a limit no method can lift
+  ([\#42](https://github.com/pedrobtz/decimal/issues/42)): R picks the
+  method from the first argument alone, so when that is not a decimal,
+  [`min()`](https://rdrr.io/r/base/Extremes.html),
+  [`max()`](https://rdrr.io/r/base/Extremes.html) and
+  [`range()`](https://rdrr.io/r/base/range.html) compare the stored text
+  and return a character vector (`min(10L, decimal("9"))` is `"10"`),
+  and [`sum()`](https://rdrr.io/r/base/sum.html) and
+  [`prod()`](https://rdrr.io/r/base/prod.html) fail. Put a decimal
+  first, `min(x, 10L)`, or convert the first argument,
+  `min(as_decimal(10L), x)`.
+
+- `options(decimal.default_scale = )` no longer leaks into the package’s
+  own conversions
+  ([\#43](https://github.com/pedrobtz/decimal/issues/43)). It is the
+  default scale for
+  [`decimal()`](https://pedrobtz.github.io/decimal/reference/decimal.md)
+  and
+  [`as_decimal()`](https://pedrobtz.github.io/decimal/reference/as_decimal.md)
+  on character, integer and double input, but integer operands, rounding
+  quantums, counts and constants picked it up too. Under
+  `default_scale = 2`, `round(x, 3)` and `quantize(x, "0.001")` returned
+  two digits and `x * 3L` gained two extra; under `default_scale = -2`,
+  `x + 150L` added 200, `x * 3L` gave 0, `mean(x)` trapped
+  `division_by_zero` and
+  [`summary()`](https://rdrr.io/r/base/summary.html) reported no missing
+  values; under `default_scale = 0`,
+  [`summary()`](https://rdrr.io/r/base/summary.html) quartiles were
+  wrong. Integers and character operands now convert exactly at the
+  scale their value gives.
+
+- [`summary()`](https://rdrr.io/r/base/summary.html) quartiles no longer
+  depend on `options(digits)`, `OutDec`, `scipen` or the numeric locale
+  ([\#44](https://github.com/pedrobtz/decimal/issues/44)). The
+  interpolation weight was built by formatting a double, so
+  `options(digits = 1)` gave a 1st quartile of 1.8 for `c(1, 2, 4, 7.1)`
+  instead of 1.75, and `OutDec = ","` raised an error. The weight is now
+  chosen from exact text.
+
+- [`vctrs::vec_sort()`](https://vctrs.r-lib.org/reference/vec_order.html),
+  [`vctrs::vec_order()`](https://vctrs.r-lib.org/reference/vec_order.html),
+  `dplyr::arrange(.locale = )` and
+  [`tidyr::expand()`](https://tidyr.tidyverse.org/reference/expand.html)
+  now order negative decimals by value in every collation locale
+  ([\#46](https://github.com/pedrobtz/decimal/issues/46)). Under
+  `en_US.UTF-8`, `vec_sort(decimal(c("-1.25", "-1.2")))` gave -1.20
+  before -1.25, because the order proxy was text that sorted correctly
+  only byte by byte. It is now an integer rank.
+  [`sort()`](https://rdrr.io/r/base/sort.html),
+  [`order()`](https://rdrr.io/r/base/order.html),
+  [`rank()`](https://rdrr.io/r/base/rank.html) and
+  [`dplyr::arrange()`](https://dplyr.tidyverse.org/reference/arrange.html)
+  without `.locale` were already correct.
+
+- `x[[i]] <- value` now widens `x` to the scale of a finer `value`, as
+  `x[i] <- value` always did, instead of silently rounding:
+  `y[[2]] <- decimal("9.123")` on a scale-2 `y` used to store 9.12
+  ([\#50](https://github.com/pedrobtz/decimal/issues/50)).
+
+- [`arrow::as_arrow_array()`](https://arrow.apache.org/docs/r/reference/as_arrow_array.html)
+  now refuses a value wider than a pinned decimal type with an error of
+  class `decimal_arrow_precision_error`, naming the digits the value
+  needs and the type’s precision. Arrow’s own cast silently wrapped a
+  value too wide for the type’s integer width: 39 nines pinned to
+  `decimal128(38, 0)` became a negative number, and `2^128 + 7` pinned
+  to `decimal128(5, 0)` became 7
+  ([\#38](https://github.com/pedrobtz/decimal/issues/38)).
+
+- A `decimal` vector with a negative scale is now written to Arrow at
+  storage scale 0, which Parquet accepts and which holds the same values
+  exactly; it reads back with scale 0, not its original negative scale.
+  Before,
+  [`arrow::write_parquet()`](https://arrow.apache.org/docs/r/reference/write_parquet.html)
+  and
+  [`arrow::write_dataset()`](https://arrow.apache.org/docs/r/reference/write_dataset.html)
+  rejected the column only after opening the destination, emptying an
+  existing file or leaving a 0-byte part.
+  [`arrow_decimal_type()`](https://pedrobtz.github.io/decimal/reference/arrow_decimal_type.md)
+  now validates its arguments and refuses a scale above the precision,
+  which Parquet rejects the same way. A table that already holds such a
+  field can still empty the destination file, because arrow opens it
+  before checking; this is documented in
+  [`?decimal_arrow`](https://pedrobtz.github.io/decimal/reference/decimal_arrow.md)
+  ([\#39](https://github.com/pedrobtz/decimal/issues/39)).
+
+- Documented that negative zero loses its sign through Arrow: an Arrow
+  decimal has a single zero, so `-0.00` reads back as `0.00`
+  ([\#40](https://github.com/pedrobtz/decimal/issues/40)).
+
 ## decimal 0.1.1
+
+CRAN release: 2026-09-23
 
 - `decimal` vectors now convert to and from ‘Arrow’ decimal arrays
   directly.
