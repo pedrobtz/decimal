@@ -1,5 +1,8 @@
 # decimal (development version)
 
+- `adjusted()` now raises its "out of integer range" error for an adjusted
+  exponent of -2147483648 instead of returning `NA` (#54).
+
 - The native routines now check the type and length of every context
   argument and raise an error for a malformed one, instead of crashing R when
   called directly through `.Call()` with a zero-length vector (#41).

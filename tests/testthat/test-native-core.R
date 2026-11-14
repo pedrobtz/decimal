@@ -142,6 +142,21 @@ test_that("string scale is NA when the exponent leaves integer range", {
   )
 })
 
+test_that("adjusted exponents at the integer limits are exact or an error", {
+  adjusted_strings <- decimal:::.decimal_adjusted_strings
+  msg <- "Adjusted exponent out of integer range at element 1"
+
+  expect_identical(adjusted_strings("5E-2147483647"), -2147483647L)
+  expect_identical(adjusted_strings("5E+2147483647"), 2147483647L)
+  expect_identical(adjusted_strings("15E+2147483646"), 2147483647L)
+  # -2147483648 is NA_integer_ in R, so it is out of range too.
+  expect_error(adjusted_strings("5E-2147483648"), msg)
+  expect_error(adjusted_strings("5E-2147483649"), msg)
+  expect_error(adjusted_strings("15E+2147483647"), msg)
+  expect_identical(adjusted(decimal("1.5E+2147483647")), 2147483647L)
+  expect_error(adjusted(decimal("1.5E+2147483648")), msg)
+})
+
 test_that("string scale rejects a non-character input", {
   expect_error(decimal:::.decimal_string_scale(1:3), "must be a character vector")
 })

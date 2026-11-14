@@ -2016,7 +2016,8 @@ SEXP decimal_c_adjusted_strings(SEXP x) {
       INTEGER(out)[i] = NA_INTEGER;
     } else {
       mpd_ssize_t adj = mpd_adjexp(dec);
-      if (adj > INT_MAX || adj < INT_MIN) {
+      /* INT_MIN is NA_integer_ in R, so the usable range is symmetric. */
+      if (adj > INT_MAX || adj < -INT_MAX) {
         mpd_del(dec);
         Rf_error("Adjusted exponent out of integer range at element %lld",
                  (long long)i + 1);
