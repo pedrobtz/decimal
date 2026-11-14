@@ -34,3 +34,12 @@ jobs:
       # CRAN's NOSUGGESTS flavor: arrow, data.table, dplyr, tidyr, stringi
       # and the rest are all optional, so check the package without them.
       nosuggests: true
+      # r-actions' default runners plus Windows R-devel. CRAN's win-builder
+      # and its incoming pretest check Windows on R-devel; this leg stands in
+      # for a manual win-builder upload. Full profile only.
+      runners: >-
+        [{"os": "macos-latest", "r": "release"},
+         {"os": "windows-latest", "r": "release"},
+         {"os": "windows-latest", "r": "devel"},
+         {"os": "ubuntu-latest", "r": "release"},
+         {"os": "ubuntu-latest", "r": "oldrel-1"}]
