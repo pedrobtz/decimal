@@ -29,7 +29,10 @@ the \code{decimal.default_scale} option before quantization.
 \details{
 When \code{scale} is \code{NULL}, \code{getOption("decimal.default_scale")} is used when
 set. Otherwise, character input infers the largest number of fractional
-digits present in \code{x}, and integer input uses scale zero. Because scale is
+digits present in \code{x}, and integer input uses scale zero. A decimal \code{x} is
+returned unchanged. The option is a default for these conversions only:
+operations such as arithmetic with an integer, \code{\link[=round]{round()}}, \code{\link[=quantize]{quantize()}} and
+\code{\link[=summary]{summary()}} never consult it. Because scale is
 a property of the vector, not the element, \code{decimal("1.2") == decimal("1.20")}, and combining them yields one uniformly scaled vector.
 }
 \examples{

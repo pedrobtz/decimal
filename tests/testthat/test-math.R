@@ -237,6 +237,96 @@ test_that("summary() reports the same statistics as base R", {
   )
 })
 
+test_that("summary() quartiles are exact type 7 values for small n", {
+  # (1:n)^2 is not linear, so a wrong index or weight shows. Every expected
+  # value is a quarter, exact in double, so `stats::quantile()` agrees.
+  expected <- list(
+    c("1", "1", "1"),
+    c("1.75", "2.5", "3.25"),
+    c("2.5", "4", "6.5"),
+    c("3.25", "6.5", "10.75"),
+    c("4", "9", "16"),
+    c("5.25", "12.5", "22.75"),
+    c("6.5", "16", "30.5"),
+    c("7.75", "20.5", "39.25"),
+    c("9", "25", "49"),
+    c("10.75", "30.5", "60.25"),
+    c("12.5", "36", "72.5"),
+    c("14.25", "42.5", "85.75")
+  )
+  for (n in 1:12) {
+    values <- (seq_len(n))^2
+    out <- summary(decimal(as.character(as.integer(values))))
+    quartiles <- out[c("1st Qu.", "Median", "3rd Qu.")]
+    expect_true(
+      all(quartiles == decimal(expected[[n]])),
+      label = paste0("quartiles for n = ", n)
+    )
+    # Compare in decimal: type 7 quartiles of squares of integers are
+    # multiples of 0.25, which convert from double exactly at scale 2.
+    # (Comparing as doubles would test `as.double()` instead, #45.)
+    reference <- stats::quantile(
+      values,
+      c(0.25, 0.5, 0.75),
+      names = FALSE,
+      type = 7
+    )
+    expect_true(
+      all(unname(quartiles) == as_decimal(reference, scale = 2L)),
+      label = paste0("quartiles match stats::quantile() for n = ", n)
+    )
+  }
+})
+
+test_that("summary() quartiles do not depend on number formatting options", {
+  x <- decimal(c("1", "2", "4", "7.1"))
+  reference <- summary(x)
+  expect_identical(
+    unname(as.character(reference[c("1st Qu.", "3rd Qu.")])),
+    c("1.750", "4.775")
+  )
+
+  for (opts in list(
+    list(digits = 1L),
+    list(OutDec = ","),
+    list(scipen = -5L),
+    list(digits = 1L, OutDec = ",", scipen = -5L)
+  )) {
+    withr::local_options(opts)
+    expect_identical(summary(x), reference)
+    expect_identical(
+      summary(decimal(as.character(1:12))),
+      local({
+        withr::local_options(digits = 7L, OutDec = ".", scipen = 0L)
+        summary(decimal(as.character(1:12)))
+      })
+    )
+  }
+})
+
+test_that("summary() quartiles do not depend on the locale", {
+  x <- decimal(c("1", "2", "4", "7.1"))
+  reference <- summary(x)
+  # R warns that changing LC_NUMERIC may cause it to function strangely.
+  old <- Sys.getlocale("LC_NUMERIC")
+  withr::defer(suppressWarnings(Sys.setlocale("LC_NUMERIC", old)))
+  candidates <- c("de_DE.UTF-8", "de_DE.utf8", "fr_FR.UTF-8", "fr_FR.utf8")
+  set <- FALSE
+  for (locale in candidates) {
+    if (!identical(suppressWarnings(Sys.setlocale("LC_NUMERIC", locale)), "")) {
+      set <- TRUE
+      break
+    }
+  }
+  skip_if_not(set, "no comma-decimal locale available")
+
+  expect_identical(summary(x), reference)
+  expect_identical(
+    unname(as.character(summary(x)[c("1st Qu.", "3rd Qu.")])),
+    c("1.750", "4.775")
+  )
+})
+
 test_that("summary() counts missing values instead of propagating them", {
   out <- summary(decimal(c("1.5", NA, "2.5")))
 
