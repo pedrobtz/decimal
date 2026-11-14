@@ -711,25 +711,18 @@ vec_ptype2.default.decimal <- function(x, y, ..., x_arg = "", y_arg = "") {
   vctrs::vec_default_ptype2(x, y, ..., x_arg = x_arg, y_arg = y_arg)
 }
 
-# A finer scale only appends zeros. A coarser one rounds, so an element whose
-# value changes makes the cast lossy, which `allow_lossy_cast()` permits.
-#' @export
-vec_cast.decimal.decimal <- function(
-  x,
-  to,
-  ...,
-  x_arg = "",
-  to_arg = "",
-  call = rlang::caller_env()
-) {
-  from_scale <- decimal_scale(x)
+# Casts `value`, the decimal form of `x`, to the scale of `to`. A finer scale
+# only appends zeros. A coarser one rounds, so an element whose value changes
+# makes the cast lossy, which `allow_lossy_cast()` permits.
+decimal_cast_scale <- function(value, x, to, x_arg, to_arg, call) {
+  from_scale <- decimal_scale(value)
   to_scale <- decimal_scale(to)
-  out <- decimal_set_scale(x, to_scale)
+  out <- decimal_set_scale(value, to_scale)
   if (to_scale >= from_scale) {
     return(out)
   }
 
-  values <- vctrs::vec_data(x)
+  values <- vctrs::vec_data(value)
   lossy <- decimal_rescale_strings(vctrs::vec_data(out), from_scale) != values
   vctrs::maybe_lossy_cast(
     out,
@@ -743,8 +736,27 @@ vec_cast.decimal.decimal <- function(
 }
 
 #' @export
-vec_cast.decimal.character <- function(x, to, ...) {
-  decimal_from_character(x)
+vec_cast.decimal.decimal <- function(
+  x,
+  to,
+  ...,
+  x_arg = "",
+  to_arg = "",
+  call = rlang::caller_env()
+) {
+  decimal_cast_scale(x, x, to, x_arg, to_arg, call)
+}
+
+#' @export
+vec_cast.decimal.character <- function(
+  x,
+  to,
+  ...,
+  x_arg = "",
+  to_arg = "",
+  call = rlang::caller_env()
+) {
+  decimal_cast_scale(decimal_from_character(x), x, to, x_arg, to_arg, call)
 }
 
 #' @export

@@ -201,8 +201,12 @@ test_that("vec_ptype labels and casts are defined", {
   )
 
   expect_identical(
-    vctrs::vec_cast(c("1.2300", NA_character_), decimal()),
+    vctrs::vec_cast(c("1.2300", NA_character_), decimal(scale = 4L)),
     decimal(c("1.2300", NA_character_))
+  )
+  expect_error(
+    vctrs::vec_cast("1.2300", decimal()),
+    class = "vctrs_error_cast_lossy"
   )
   expect_identical(
     vctrs::vec_cast(c(1L, NA_integer_), decimal()),
@@ -385,6 +389,76 @@ test_that("casting to a coarser decimal is a lossy cast (#50)", {
     vctrs::vec_cast(decimal("155"), decimal("1E+1", scale = -1L)),
     class = "vctrs_error_cast_lossy"
   )
+})
+
+test_that("casting text to a decimal type uses that type's scale (#51)", {
+  to <- decimal("1.0")
+
+  expect_identical(
+    vctrs::vec_cast(c("1.2", "2", "-0", NA, "NaN", "Infinity"), to),
+    decimal(c("1.2", "2.0", "-0.0", NA, "NaN", "Infinity"))
+  )
+  expect_identical(
+    vctrs::vec_c("1.20", "2", .ptype = to),
+    decimal(c("1.2", "2.0"))
+  )
+  expect_identical(
+    vctrs::vec_cast("1.5", decimal("1.000")),
+    decimal("1.500")
+  )
+  expect_error(
+    vctrs::vec_c("1.123", "2", .ptype = to),
+    class = "vctrs_error_cast_lossy"
+  )
+  expect_snapshot(vctrs::vec_cast(c("1.5", "1.123"), to), error = TRUE)
+  expect_identical(
+    vctrs::allow_lossy_cast(vctrs::vec_c("1.123", "2", .ptype = to)),
+    decimal(c("1.1", "2.0"))
+  )
+})
+
+# Every finite element of a decimal vector carries exactly the vector's scale.
+expect_scale_invariant <- function(x) {
+  expect_s3_class(x, "decimal")
+  digits <- decimal:::.decimal_string_scale(vctrs::vec_data(x))
+  expect_identical(
+    unique(digits[!is.na(digits)]),
+    if (any(!is.na(digits))) attr(x, "scale") else integer()
+  )
+}
+
+test_that("conversions and assignments keep stored digits at the scale (#51)", {
+  coarse <- decimal(c("1.5", NA, "-Infinity"))
+  fine <- decimal(c("0.125", "-0.000", "NaN"))
+  to <- decimal("1.00")
+  assign_one <- coarse
+  assign_one[2] <- decimal("7.125")
+  assign_two <- coarse
+  assign_two[[2]] <- decimal("9.12345")
+  assign_int <- fine
+  assign_int[[1]] <- 3L
+
+  results <- list(
+    vctrs::vec_c(coarse, fine),
+    vctrs::vec_c(fine, 2L, NA),
+    vctrs::vec_c("1.5", "2", .ptype = to),
+    vctrs::vec_c(1L, NA, .ptype = to),
+    vctrs::vec_cast(c("3", "-0.1", NA, "sNaN"), to),
+    vctrs::vec_cast(c(1L, -2L, NA), to),
+    vctrs::vec_cast(coarse, fine),
+    vctrs::allow_lossy_cast(vctrs::vec_cast(fine, coarse)),
+    vctrs::allow_lossy_cast(vctrs::vec_cast(c("1.555", "2"), to)),
+    vctrs::vec_rbind(data.frame(x = coarse), data.frame(x = fine))$x,
+    rbind(data.frame(x = coarse), data.frame(x = fine))$x,
+    assign_one,
+    assign_two,
+    assign_int,
+    pmax(fine, coarse),
+    decimal_from_double(c(0.1, 2), scale = 3L)
+  )
+  for (result in results) {
+    expect_scale_invariant(result)
+  }
 })
 
 test_that("combining decimals of different scales takes the finer one (#50)", {

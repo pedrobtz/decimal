@@ -70,6 +70,14 @@
   of different scales (`c()`, `vec_c()`, `rbind()`, `dplyr::bind_rows()`,
   `dplyr::if_else()`, `dplyr::coalesce()`) still takes the finer scale, and
   `as_decimal(x, scale = )` still rounds on request (#50).
+
+- Behaviour change: `vctrs::vec_cast()` from character to a decimal type now
+  uses that type's scale (#51). `vec_c("1.123", "2", .ptype = decimal("1.0"))`
+  used to return a vector labelled scale 1 that stored "1.123" and "2"
+  unchanged. Text with fewer digits is padded exactly; text that would be
+  rounded is a lossy cast, as for a coarser decimal, so `vec_cast("1.23",
+  decimal())` now errors. `decimal()` and `as_decimal()` still infer the
+  scale from the text.
 ||||||| 11134d5
 
 - `arrow::as_arrow_array()` now refuses a value wider than a pinned decimal
