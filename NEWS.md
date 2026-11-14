@@ -1,8 +1,49 @@
 # decimal (development version)
 
+## Known issues
+
+- Combining decimal Arrow columns of different scales or storage widths can
+  silently misread values: 3.125 can come back as 31.25. This affects
+  `arrow::concat_arrays()`, `arrow::concat_tables()` and
+  `arrow::open_dataset()` over parts written separately, followed by
+  `collect()` or `arrange()`, because arrow compares this package's extension
+  types by name alone. Until this is fixed, pin one type with
+  `arrow_decimal_type()` for every part that will be appended or combined
+  (#37).
+
+## Bug fixes
+
+- Converting an Arrow column whose chunks carry different decimal storage now
+  checks every chunk. Chunks that differ only in precision, such as dataset
+  parts whose values had different magnitudes, now combine exactly, where
+  arrow used to fail with "Array chunks must all be same type". Chunks that
+  differ in scale or width raise an error of class
+  `decimal_arrow_chunk_error` instead of being misread (#37).
+
 - The bundled 'mpdecimal' now builds for WebAssembly (webR). Its configuration
   did not recognise the `wasm32` target and stopped with "unsupported
   platform".
+
+- `arrow::as_arrow_array()` now refuses a value wider than a pinned decimal
+  type with an error of class `decimal_arrow_precision_error`, naming the
+  digits the value needs and the type's precision. Arrow's own cast silently
+  wrapped a value too wide for the type's integer width: 39 nines pinned to
+  `decimal128(38, 0)` became a negative number, and `2^128 + 7` pinned to
+  `decimal128(5, 0)` became 7 (#38).
+
+- A `decimal` vector with a negative scale is now written to Arrow at storage
+  scale 0, which Parquet accepts and which holds the same values exactly; it
+  reads back with scale 0, not its original negative scale. Before,
+  `arrow::write_parquet()` and `arrow::write_dataset()` rejected the column
+  only after opening the destination, emptying an existing file or leaving a
+  0-byte part. `arrow_decimal_type()` now validates its arguments and refuses
+  a scale above the precision, which Parquet rejects the same way. A table
+  that already holds such a field can still empty the destination file,
+  because arrow opens it before checking; this is documented in
+  `?decimal_arrow` (#39).
+
+- Documented that negative zero loses its sign through Arrow: an Arrow decimal
+  has a single zero, so `-0.00` reads back as `0.00` (#40).
 
 # decimal 0.1.1
 
