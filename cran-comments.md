@@ -36,11 +36,13 @@ guarded.
 ## Test environments
 
 - local macOS 15 (x86_64), R 4.6.2
-- GitHub Actions: macOS (R release); Windows (R devel and release); Ubuntu
-  (R devel, release and oldrel-1); CRAN-like containers (clang, ubuntu-clang,
-  ubuntu-gcc); R-hub `nosuggests`
-- GitHub Actions, for the compiled code: ASan/UBSan, Valgrind, LTO,
-  gctorture, rchk, gcc `-fanalyzer`, and CRAN's rcnst, rlibro and vnu checks
+- GitHub Actions runners: macOS (R release); Windows (R release and R devel);
+  Ubuntu (R release and oldrel-1)
+- GitHub Actions, CRAN-like R-devel containers: clang 23 (C as `-std=gnu23`,
+  CRAN's C flags), Ubuntu clang and Ubuntu GCC 16; R-hub `nosuggests`
+- GitHub Actions, for the compiled code: AddressSanitizer (R-hub `clang-asan`
+  and `gcc-asan`), UBSan (gcc and clang), Valgrind memcheck, LTO, gctorture,
+  rchk, gcc `-fanalyzer`, and CRAN's rcnst, rlibro and vnu checks
 
 ## R CMD check results
 
