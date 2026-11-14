@@ -150,16 +150,20 @@ than through the decimal methods:
 - **`min()`, `max()`, `range()`, `sum()` and `prod()`** pick their method
   from the first argument alone. With a decimal first they work as you'd
   expect, but `min(10L, decimal("9"))` compares text and returns `"10"`, and
-  `sum(1L, x)` stops with an error. Put a decimal first: `min(x, 10L)`.
+  `sum(1L, x)` stops with an error. Put a decimal first, `min(x, 10L)` and
+  `sum(x, 1L)`, or convert the first argument, `min(as_decimal(10L), x)`.
 - **`merge()`** matches a decimal key by value, so `2.5` matches `2.50`, but
   with `sort = TRUE`, the default, it orders the result by the key's text:
   `10` comes before `9`. Reorder the result with `order(xtfrm(key))`.
 - **`pmax()` and `pmin()`** give the result the first argument's attributes.
   With a decimal first they compare values correctly, but they stop with an
   error when a later argument has a finer scale, because the result would
-  carry the first argument's scale. Give every argument the same scale first,
-  or pass the finest-scaled one first. When the first argument is not a
-  decimal, `pmax(2L, x)`, they return a character vector.
+  carry the first argument's scale: `pmax(decimal("10"), decimal("9.5"))`
+  fails. Bring the arguments to a common scale first,
+  `pmax(as_decimal(decimal("10"), scale = 1), decimal("9.5"))`, or put the
+  finest-scaled one first, `pmax(decimal("9.5"), decimal("10"))`. When the
+  first argument is not a decimal, `pmax(2L, x)` returns a character vector;
+  write `pmax(x, 2L)` or `pmax(as_decimal(2L), x)` instead.
 
 ### In a data.table
 

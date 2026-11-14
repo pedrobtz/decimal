@@ -810,24 +810,43 @@ vec_cast.default.decimal <- function(x, to, ..., x_arg = "", to_arg = "") {
 # result with `[<-` and then reset its attributes to the first argument's, so a
 # later argument with a finer scale would leave values at that scale under the
 # first argument's `scale` attribute. `[<-` is the only hook they offer, so it
-# refuses the assignment when its caller is one of them. `..1` is their first
-# argument.
-decimal_check_parallel_extrema <- function(scale, frame) {
+# refuses the assignment when its caller is one of them.
+#
+# This depends on recognising the caller, which is fragile: a copy of
+# `base::pmax` is not recognised and gets the ordinary assignment, and so the
+# mismatched result. A design that does not depend on the caller is tracked
+# in #75. Detection may only add this error: when it fails or errors for any
+# reason, `[<-` behaves exactly as it would without it.
+decimal_parallel_extrema_caller <- function(frame) {
   if (frame <= 0L) {
+    return(NULL)
+  }
+
+  tryCatch(
+    {
+      caller <- sys.function(frame)
+      name <- if (identical(caller, base::pmax)) {
+        "pmax"
+      } else if (identical(caller, base::pmin)) {
+        "pmin"
+      } else {
+        return(NULL)
+      }
+      # `..1` is the first argument of `pmax(...)` and `pmin(...)`.
+      list(name = name, first = eval(quote(..1), sys.frame(frame)))
+    },
+    error = function(cnd) NULL
+  )
+}
+
+decimal_check_parallel_extrema <- function(scale, frame) {
+  caller <- decimal_parallel_extrema_caller(frame)
+  if (is.null(caller) || !is_decimal(caller$first)) {
     return(invisible())
   }
 
-  caller <- sys.function(frame)
-  name <- if (identical(caller, base::pmax)) {
-    "pmax"
-  } else if (identical(caller, base::pmin)) {
-    "pmin"
-  } else {
-    return(invisible())
-  }
-
-  first <- eval(quote(..1), sys.frame(frame))
-  if (!is_decimal(first) || scale <= decimal_scale(first)) {
+  first_scale <- decimal_scale(caller$first)
+  if (scale <= first_scale) {
     return(invisible())
   }
 
@@ -835,23 +854,25 @@ decimal_check_parallel_extrema <- function(scale, frame) {
     c(
       paste0(
         "`",
-        name,
+        caller$name,
         "()` can't take a decimal with a finer scale than its first argument."
       ),
       i = paste0(
         "The first argument has scale ",
-        decimal_scale(first),
+        first_scale,
         "; a later one has scale ",
         scale,
         "."
       ),
       i = paste0(
-        "Give every argument the same scale, for example with ",
-        "`as_decimal(x, scale = )`, or pass the finest-scaled one first."
+        "Bring the arguments to a common scale first, for example with ",
+        "`as_decimal(x, scale = ",
+        scale,
+        ")` on the first, or put the finest-scaled argument first."
       )
     ),
     class = "decimal_parallel_extrema_scale",
-    call = rlang::call2(name)
+    call = rlang::call2(caller$name)
   )
 }
 
@@ -862,6 +883,8 @@ decimal_check_parallel_extrema <- function(scale, frame) {
     i <- seq_along(x)
   }
   ptype <- vctrs::vec_ptype_common(x, value)
+  # Refuse a widening assignment made by base `pmax()`/`pmin()` (#48). This
+  # only adds an error; a caller-independent design is tracked in #75.
   decimal_check_parallel_extrema(decimal_scale(ptype), sys.parent())
   x <- vctrs::vec_cast(x, ptype)
   value <- vctrs::vec_cast(value, ptype)
@@ -1139,18 +1162,29 @@ decimal_trimmed_mean <- function(x, trim) {
 #'
 #' @section Put a decimal first:
 #' R picks the method for `sum()`, `prod()`, `min()`, `max()` and `range()`
-#' from the first argument alone. When that argument is not a decimal, as in
-#' `min(10L, x)`, R never calls these methods and treats a decimal as the
-#' text it stores. `min()`, `max()` and `range()` then return a character
-#' vector compared as text, so `min(10L, decimal("9"))` is `"10"`, and `sum()`
-#' and `prod()` fail with "invalid 'type' (character) of argument". The
-#' package has no way to intercept this, nor to make it an error. Put a
-#' decimal first, `min(x, 10L)`, or convert first, `min(decimal(10L), x)`.
+#' from the first argument alone. When that argument is not a decimal, R
+#' never calls these methods and treats a decimal as the text it stores. The
+#' package has no way to intercept this, nor to make it an error. In each
+#' case, put a decimal first or convert the first argument with
+#' [as_decimal()]:
+#'
+#' - `min(10L, x)` compares text, so `min(10L, decimal("9"))` is `"10"`.
+#'   Write `min(x, 10L)` or `min(as_decimal(10L), x)`.
+#' - `max(2L, x)` and `range(2L, x)` return a character vector. Write
+#'   `max(x, 2L)` or `range(as_decimal(2L), x)`.
+#' - `sum(1L, x)` and `prod(1L, x)` fail with "invalid 'type' (character) of
+#'   argument". Write `sum(x, 1L)` or `prod(as_decimal(1L), x)`.
+#' - `pmax(2L, x)` and `pmin(2L, x)` return a character vector. Write
+#'   `pmax(x, 2L)` or `pmax(as_decimal(2L), x)`.
 #'
 #' [pmax()] and [pmin()] are not generic. With a decimal first they compare
 #' values, and stop with an error when a later argument has a finer scale
 #' than the first, because base R would give the result the first argument's
-#' scale. With anything else first they return a character vector.
+#' scale: `pmax(decimal("10"), decimal("9.5"))` fails, while
+#' `pmax(as_decimal(decimal("10"), scale = 1), decimal("9.5"))` and
+#' `pmax(decimal("9.5"), decimal("10"))` work.
+#'
+#' `any()` and `all()` are not supported for decimal vectors.
 #'
 #' @param x,... `decimal` or integer vectors. A decimal must come first; see
 #'   "Put a decimal first".

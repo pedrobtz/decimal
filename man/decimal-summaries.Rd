@@ -51,18 +51,30 @@ median, as in \code{\link[=mean.default]{mean.default()}}.
 \section{Put a decimal first}{
 
 R picks the method for \code{sum()}, \code{prod()}, \code{min()}, \code{max()} and \code{range()}
-from the first argument alone. When that argument is not a decimal, as in
-\code{min(10L, x)}, R never calls these methods and treats a decimal as the
-text it stores. \code{min()}, \code{max()} and \code{range()} then return a character
-vector compared as text, so \code{min(10L, decimal("9"))} is \code{"10"}, and \code{sum()}
-and \code{prod()} fail with "invalid 'type' (character) of argument". The
-package has no way to intercept this, nor to make it an error. Put a
-decimal first, \code{min(x, 10L)}, or convert first, \code{min(decimal(10L), x)}.
+from the first argument alone. When that argument is not a decimal, R
+never calls these methods and treats a decimal as the text it stores. The
+package has no way to intercept this, nor to make it an error. In each
+case, put a decimal first or convert the first argument with
+\code{\link[=as_decimal]{as_decimal()}}:
+\itemize{
+\item \code{min(10L, x)} compares text, so \code{min(10L, decimal("9"))} is \code{"10"}.
+Write \code{min(x, 10L)} or \code{min(as_decimal(10L), x)}.
+\item \code{max(2L, x)} and \code{range(2L, x)} return a character vector. Write
+\code{max(x, 2L)} or \code{range(as_decimal(2L), x)}.
+\item \code{sum(1L, x)} and \code{prod(1L, x)} fail with "invalid 'type' (character) of
+argument". Write \code{sum(x, 1L)} or \code{prod(as_decimal(1L), x)}.
+\item \code{pmax(2L, x)} and \code{pmin(2L, x)} return a character vector. Write
+\code{pmax(x, 2L)} or \code{pmax(as_decimal(2L), x)}.
+}
 
 \code{\link[=pmax]{pmax()}} and \code{\link[=pmin]{pmin()}} are not generic. With a decimal first they compare
 values, and stop with an error when a later argument has a finer scale
 than the first, because base R would give the result the first argument's
-scale. With anything else first they return a character vector.
+scale: \code{pmax(decimal("10"), decimal("9.5"))} fails, while
+\code{pmax(as_decimal(decimal("10"), scale = 1), decimal("9.5"))} and
+\code{pmax(decimal("9.5"), decimal("10"))} work.
+
+\code{any()} and \code{all()} are not supported for decimal vectors.
 }
 
 \examples{

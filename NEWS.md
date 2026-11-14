@@ -45,17 +45,20 @@
 - `pmax()` and `pmin()` now refuse a decimal argument whose scale is finer
   than the first argument's (#48). Base R gives the result the first
   argument's attributes, so `pmax(decimal(c("10", "9")), decimal("9.5"))`
-  returned values held at one decimal place under a `scale` of zero. The
-  error suggests giving the arguments one scale. These functions are not
-  generic, so with a non-decimal first argument they still return a character
-  vector.
+  returned values held at one decimal place under a `scale` of zero. Bring
+  the arguments to a common scale first, as in
+  `pmax(as_decimal(x, scale = 1), y)`, or put the finest-scaled argument
+  first. These functions are not generic, so with a non-decimal first
+  argument they still return a character vector: write `pmax(x, 2L)` or
+  `pmax(as_decimal(2L), x)` rather than `pmax(2L, x)`.
 
 - New `?decimal-summaries` documents `sum()`, `prod()`, `mean()`, `min()`,
   `max()` and `range()` for `decimal` vectors, including a limit no method
   can lift (#42): R picks the method from the first argument alone, so when
   that is not a decimal, `min()`, `max()` and `range()` compare the stored
   text and return a character vector (`min(10L, decimal("9"))` is `"10"`),
-  and `sum()` and `prod()` fail. Put a decimal first.
+  and `sum()` and `prod()` fail. Put a decimal first, `min(x, 10L)`, or
+  convert the first argument, `min(as_decimal(10L), x)`.
 
 - `options(decimal.default_scale = )` no longer leaks into the package's own
   conversions (#43). It is the default scale for `decimal()` and

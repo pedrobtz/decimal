@@ -386,6 +386,42 @@ test_that("min(), max() and range() compare values when a decimal comes first", 
   )
 })
 
+# R picks the Summary method from the first argument only, so these forms
+# never reach the decimal methods. They pin today's behaviour, so that a change
+# in R or in this package is noticed (#42, #75).
+test_that("known limitation: min/max/range with a non-decimal first argument", {
+  expect_identical(min(10L, decimal("9")), "10")
+  expect_identical(max(2L, decimal("10")), "2")
+  expect_identical(max(9L, decimal(c("10", "100"))), "9")
+  expect_identical(range(2L, decimal("10")), c("10", "2"))
+
+  # Working forms.
+  expect_identical(min(decimal("9"), 10L), decimal("9"))
+  expect_identical(min(as_decimal(10L), decimal("9")), decimal("9"))
+  expect_identical(range(as_decimal(2L), decimal("10")), decimal(c("2", "10")))
+})
+
+test_that("known limitation: sum/prod with a non-decimal first argument", {
+  expect_error(sum(1L, decimal("2")), "invalid 'type' \\(character\\)")
+  expect_error(prod(2L, decimal("3")), "invalid 'type' \\(character\\)")
+
+  expect_identical(sum(decimal("2"), 1L), decimal("3"))
+  expect_identical(prod(as_decimal(2L), decimal("3")), decimal("6"))
+})
+
+test_that("known limitation: any() and all() on decimal vectors", {
+  expect_error(any(decimal("1")), "`any\\(\\)` is not implemented")
+  expect_error(all(decimal("1")), "`all\\(\\)` is not implemented")
+  expect_warning(
+    expect_identical(any(FALSE, decimal("1")), NA),
+    "coercing argument of type 'character' to logical"
+  )
+  expect_warning(
+    expect_identical(all(TRUE, decimal("1")), NA),
+    "coercing argument of type 'character' to logical"
+  )
+})
+
 test_that("is.unsorted() orders decimal values, not their text", {
   expect_false(is.unsorted(decimal(c("9", "10"))))
   expect_true(is.unsorted(decimal(c("10", "9"))))
@@ -441,6 +477,68 @@ test_that("pmax() and pmin() refuse a later argument with a finer scale", {
     class = "decimal_parallel_extrema_scale"
   )
   expect_identical(pmax(y, x), decimal(c("10.0", "9.5")))
+})
+
+test_that("the pmax() check catches indirect calls to base pmax()", {
+  x <- decimal(c("10", "9"))
+  y <- decimal(c("9.5", "9.5"))
+  df <- data.frame(x = x, y = y)
+  wrapper <- function(a, b) pmax(a, b)
+  cls <- "decimal_parallel_extrema_scale"
+
+  expect_error(do.call(pmax, list(x, y)), class = cls)
+  expect_error(do.call(pmin, list(x, y)), class = cls)
+  expect_error(Reduce(pmax, list(x, y)), class = cls)
+  expect_error(wrapper(x, y), class = cls)
+  expect_error(pmax(df$x, df$y), class = cls)
+  expect_error(with(df, pmin(x, y)), class = cls)
+})
+
+test_that("the pmax() check leaves other assignments alone", {
+  # A user function named pmax is not base pmax(): an ordinary assignment of a
+  # finer value still widens the vector.
+  pmax <- function(a, b) {
+    a[2] <- b
+    a
+  }
+  expect_identical(
+    pmax(decimal(c("10", "9")), decimal("9.5")),
+    decimal(c("10.0", "9.5"))
+  )
+
+  assign_second <- function(a, b) {
+    a[2] <- b
+    a
+  }
+  expect_identical(
+    assign_second(decimal(c("10", "9")), decimal("9.5")),
+    decimal(c("10.0", "9.5"))
+  )
+  expect_identical(
+    lapply(list(decimal(c("10", "9"))), assign_second, decimal("9.5"))[[1]],
+    decimal(c("10.0", "9.5"))
+  )
+  top <- decimal(c("10", "9"))
+  top[2] <- decimal("9.5")
+  expect_identical(top, decimal(c("10.0", "9.5")))
+})
+
+test_that("known limitation: a copy of base pmax() is not recognised (#75)", {
+  # The check compares the caller with `base::pmax` itself. A copy with another
+  # environment is a different function, so it gets the ordinary assignment and
+  # returns the scale mismatch: data at scale 1 under a `scale` of 0.
+  copy <- base::pmax
+  environment(copy) <- new.env(parent = baseenv())
+  out <- copy(decimal(c("10", "9")), decimal(c("9.5", "9.5")))
+  expect_identical(vctrs::vec_data(out), c("10.0", "9.5"))
+  expect_identical(attr(out, "scale"), 0L)
+})
+
+test_that("known limitation: pmax() with a non-decimal first argument (#42)", {
+  # Base `[<-` on the integer accumulator coerces to character.
+  expect_identical(pmax(2L, decimal(c("10", "1"))), c("10", "2"))
+  # Working form: a decimal first.
+  expect_identical(pmax(decimal(c("10", "1")), 2L), decimal(c("10", "2")))
 })
 
 test_that("rounding functions pass infinities and quiet NaNs through", {

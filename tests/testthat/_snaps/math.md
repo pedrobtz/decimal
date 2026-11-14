@@ -6,7 +6,7 @@
       Error in `pmax()`:
       ! `pmax()` can't take a decimal with a finer scale than its first argument.
       i The first argument has scale 0; a later one has scale 1.
-      i Give every argument the same scale, for example with `as_decimal(x, scale = )`, or pass the finest-scaled one first.
+      i Bring the arguments to a common scale first, for example with `as_decimal(x, scale = 1)` on the first, or put the finest-scaled argument first.
 
 # a quantize trap on a special value does not blame the precision
 
