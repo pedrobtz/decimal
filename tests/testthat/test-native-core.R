@@ -142,6 +142,35 @@ test_that("string scale is NA when the exponent leaves integer range", {
   )
 })
 
+test_that("string scale combines fractional digits before the range check", {
+  # Scale is fractional digits minus exponent: a fractional digit brings an
+  # exponent just past integer range back inside it.
+  expect_identical(
+    decimal:::.decimal_string_scale(
+      c(
+        "1.5E+2147483648",
+        "1.5E+2147483649",
+        "1.5E-2147483646",
+        "1.5E-2147483647",
+        "12.34E+2147483649",
+        "12.34E+2147483650",
+        "1E+99999999999999999999999999",
+        "1.5E-99999999999999999999999999"
+      )
+    ),
+    c(
+      -2147483647L,
+      NA_integer_,
+      2147483647L,
+      NA_integer_,
+      -2147483647L,
+      NA_integer_,
+      NA_integer_,
+      NA_integer_
+    )
+  )
+})
+
 test_that("adjusted exponents at the integer limits are exact or an error", {
   adjusted_strings <- decimal:::.decimal_adjusted_strings
   msg <- "Adjusted exponent out of integer range at element 1"

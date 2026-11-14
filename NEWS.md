@@ -1,5 +1,11 @@
 # decimal (development version)
 
+- `decimal()` and `as_decimal()` now refuse a value whose scale, its
+  fractional digits minus its exponent, lies outside integer range, such as
+  `"1E-2147483650"`, instead of storing it with the wrong scale. A value whose
+  exponent alone is out of range but whose scale is not, such as
+  `"1.5e+2147483648"`, is now accepted (#52).
+
 - `adjusted()` now raises its "out of integer range" error for an adjusted
   exponent of -2147483648 instead of returning `NA` (#54).
 

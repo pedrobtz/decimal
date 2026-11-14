@@ -745,9 +745,14 @@ SEXP decimal_c_validate_strings(SEXP x) {
  * NA, infinities and NaNs, and also deliberately rejects forms mpdecimal would
  * otherwise accept, such as a leading "+", a bare ".5" or a trailing "1.".
  *
- * Accumulation is done in int64 so that an exponent outside int range, or a
- * difference that leaves it, yields NA exactly as R's integer arithmetic did.
+ * Accumulation is done in int64 and the range check is applied to the
+ * difference, not to the exponent alone: "1.5e+2147483648" has scale
+ * -2147483647, which is representable. A scale outside int range (INT_MIN
+ * included, since that is NA_integer_) yields NA; the constructor turns NA
+ * for a finite value into an error.
  */
+#define DECIMAL_SCALE_EXPO_LIMIT ((int64_t)1 << 40)
+
 static int decimal_scan_string_scale(const char *s) {
   const char *p = s;
   int64_t frac = 0;
@@ -791,18 +796,17 @@ static int decimal_scan_string_scale(const char *s) {
       return NA_INTEGER;
     }
     while (*p >= '0' && *p <= '9') {
-      expo = expo * 10 + (*p - '0');
-      if (expo > (int64_t)INT_MAX + 1) {
-        return NA_INTEGER;
+      /* Saturate rather than overflow: once the exponent is this far out,
+       * no count of fractional digits (at most a string's length, below
+       * 2^31) can bring the scale back into integer range. The rest of the
+       * digits are still scanned so the grammar check below sees them. */
+      if (expo <= DECIMAL_SCALE_EXPO_LIMIT) {
+        expo = expo * 10 + (*p - '0');
       }
       ++p;
     }
     if (negative) {
       expo = -expo;
-    }
-    /* as.integer() rejected anything outside int range, including +2147483648 */
-    if (expo > INT_MAX || expo < -INT_MAX) {
-      return NA_INTEGER;
     }
   }
 

@@ -126,6 +126,35 @@ test_that("unsupported construction paths fail cleanly", {
   expect_error(decimal("not-a-decimal"), "Invalid decimal string at element 1")
 })
 
+test_that("a value whose scale is outside integer range is refused", {
+  msg <- "scale outside integer range at element"
+
+  # Scale is fractional digits minus exponent; +-2147483647 is the limit.
+  expect_identical(decimal_scale(decimal("1E-2147483647")), 2147483647L)
+  expect_identical(decimal_scale(decimal("1E+2147483647")), -2147483647L)
+  expect_identical(decimal_scale(decimal("1.5E-2147483646")), 2147483647L)
+  expect_identical(decimal_scale(decimal("1.5E+2147483648")), -2147483647L)
+  expect_identical(
+    as.character(decimal("1.5E+2147483648")),
+    "1.5e+2147483648"
+  )
+
+  expect_error(decimal("1E-2147483648"), msg)
+  expect_error(decimal("1E+2147483648"), msg)
+  expect_error(decimal("1.5E-2147483647"), msg)
+  expect_error(decimal("1.5E+2147483649"), msg)
+  expect_error(decimal(c("1E-2147483650", "2.5")), paste(msg, "1"))
+  expect_error(decimal(c("2.5", "1e2147483648")), paste(msg, "2"))
+  expect_error(decimal("1E-2147483650", scale = 2L), msg)
+  expect_error(as_decimal("1E-2147483650"), msg)
+
+  # Special values carry no scale and still pass.
+  expect_identical(
+    as.character(decimal(c("NaN", "-Infinity", "sNaN", "2.5", NA))),
+    c("NaN", "-Infinity", "sNaN", "2.5", NA)
+  )
+})
+
 test_that("decimal formatting and reverse coercions behave as specified", {
   x <- decimal(c("1.2300", "-0", "NaN", NA_character_))
 
