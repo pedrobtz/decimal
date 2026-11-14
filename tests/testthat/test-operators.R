@@ -125,3 +125,110 @@ test_that("equality and ordering are scale-invariant: 1.0 and 1 are the same val
     decimal(c("-Infinity", "-2", "0", "-0", "1.0", "1", "2", "Infinity", "NaN"))
   )
 })
+
+# Sets the collation for the calling test, or skips the test when the
+# platform lacks that locale.
+local_collation <- function(locale, env = parent.frame()) {
+  if (!identical(locale, "C")) {
+    old <- Sys.getlocale("LC_COLLATE")
+    set <- suppressWarnings(Sys.setlocale("LC_COLLATE", locale))
+    Sys.setlocale("LC_COLLATE", old)
+    if (identical(set, "")) {
+      skip(paste0("Locale ", locale, " is not available."))
+    }
+  }
+  withr::local_collate(locale, .local_envir = env)
+}
+
+order_sample <- function() {
+  withr::local_seed(46)
+  finite <- sprintf(
+    "%s%d.%03d",
+    sample(c("-", ""), 60, replace = TRUE),
+    sample(0:120, 60, replace = TRUE),
+    sample(0:999, 60, replace = TRUE)
+  )
+  special <- c(
+    "-1.25",
+    "-1.2",
+    "-1.205",
+    "-12",
+    "-120",
+    "-0.012",
+    "-1",
+    "1",
+    "1.2",
+    "1.25",
+    "12",
+    "0",
+    "-0",
+    "0.000",
+    "Infinity",
+    "-Infinity",
+    "NaN",
+    NA_character_
+  )
+  decimal(sample(c(finite, special)))
+}
+
+test_that("vctrs orders negative decimals by value in any collation (#46)", {
+  for (locale in c("C", "en_US.UTF-8", "de_DE.UTF-8", "sv_SE.UTF-8")) {
+    local({
+      local_collation(locale)
+      x <- order_sample()
+
+      expect_identical(
+        vctrs::vec_sort(decimal(c("-1.25", "-1.2"))),
+        decimal(c("-1.25", "-1.20")),
+        info = locale
+      )
+      expect_identical(vctrs::vec_order(x), order(x), info = locale)
+      expect_identical(vctrs::vec_sort(x), x[order(x)], info = locale)
+      expect_identical(
+        vctrs::vec_sort(x, direction = "desc"),
+        x[order(x, decreasing = TRUE, na.last = FALSE)],
+        info = locale
+      )
+      expect_identical(
+        vctrs::vec_rank(x, ties = "min", incomplete = "na"),
+        as.integer(rank(xtfrm(x), ties.method = "min", na.last = "keep")),
+        info = locale
+      )
+    })
+  }
+})
+
+test_that("dplyr and tidyr order decimals by value under ICU collation (#46)", {
+  skip_if_not_installed("dplyr")
+  skip_if_not_installed("stringi")
+  local_collation("en_US.UTF-8")
+  x <- order_sample()
+  df <- data.frame(x = x)
+
+  expect_identical(dplyr::arrange(df, x, .locale = "en")$x, x[order(x)])
+  expect_identical(dplyr::arrange(df, x)$x, x[order(x)])
+  expect_identical(
+    dplyr::arrange(df, dplyr::desc(x), .locale = "en")$x,
+    x[order(x, decreasing = TRUE, na.last = TRUE)]
+  )
+
+  # An inequality join orders both sides together.
+  left <- data.frame(a = decimal(c("-1.25", "-1.2", "0.5")))
+  right <- data.frame(b = decimal(c("-1.21", "0")))
+  joined <- dplyr::inner_join(left, right, by = dplyr::join_by(a > b))
+  expect_identical(joined$a, decimal(c("-1.20", "0.50", "0.50")))
+  expect_identical(joined$b, decimal(c("-1.21", "-1.21", "0.00")))
+
+  skip_if_not_installed("tidyr")
+  expect_identical(tidyr::expand(df, x)$x, unique(x[order(x)]))
+})
+
+test_that("vctrs comparisons agree with the comparison operators (#46)", {
+  local_collation("en_US.UTF-8")
+  x <- order_sample()
+  y <- rev(x)
+  known <- !is.na(x) & !is.na(y) & !is.nan(x) & !is.nan(y)
+
+  expected <- ifelse(x < y, -1L, ifelse(x > y, 1L, 0L))
+  expect_identical(vctrs::vec_compare(x, y)[known], expected[known])
+})

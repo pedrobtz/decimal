@@ -757,14 +757,85 @@ vec_ptype2.default.decimal <- function(x, y, ..., x_arg = "", y_arg = "") {
   vctrs::vec_default_ptype2(x, y, ..., x_arg = x_arg, y_arg = y_arg)
 }
 
-#' @export
-vec_cast.decimal.decimal <- function(x, to, ...) {
-  decimal_set_scale(x, decimal_scale(to))
+# Casts `value`, the decimal form of `x`, to the scale of `to`. A finer scale
+# only appends zeros. A coarser one rounds, so an element whose value changes
+# makes the cast lossy, which `allow_lossy_cast()` permits.
+decimal_lossy_cast_body <- function(from_scale, to_scale) {
+  c(
+    x = paste0(
+      "The target has scale ",
+      to_scale,
+      "; the values need scale ",
+      from_scale,
+      "."
+    ),
+    i = paste0(
+      "Round explicitly with `as_decimal(x, scale = ",
+      to_scale,
+      ")`, or cast to a prototype with scale ",
+      from_scale,
+      ", such as `decimal(scale = ",
+      from_scale,
+      "L)`."
+    )
+  )
+}
+
+decimal_cast_scale <- function(value, x, to, x_arg, to_arg, call) {
+  from_scale <- decimal_scale(value)
+  to_scale <- decimal_scale(to)
+  out <- decimal_set_scale(value, to_scale)
+  if (to_scale >= from_scale) {
+    return(out)
+  }
+
+  values <- vctrs::vec_data(value)
+  lossy <- decimal_rescale_strings(vctrs::vec_data(out), from_scale) != values
+  # vctrs builds the header itself; add the scales and the remedy as the
+  # body. Re-signalling the same condition from a calling handler keeps its
+  # class and leaves `allow_lossy_cast()`'s restart in reach.
+  withCallingHandlers(
+    vctrs::maybe_lossy_cast(
+      out,
+      x,
+      to,
+      lossy = !is.na(lossy) & lossy,
+      x_arg = x_arg,
+      to_arg = to_arg,
+      call = call
+    ),
+    vctrs_error_cast_lossy = function(cnd) {
+      cnd$body <- c(
+        rlang::cnd_body(cnd),
+        decimal_lossy_cast_body(from_scale, to_scale)
+      )
+      stop(cnd)
+    }
+  )
 }
 
 #' @export
-vec_cast.decimal.character <- function(x, to, ...) {
-  decimal_from_character(x)
+vec_cast.decimal.decimal <- function(
+  x,
+  to,
+  ...,
+  x_arg = "",
+  to_arg = "",
+  call = rlang::caller_env()
+) {
+  decimal_cast_scale(x, x, to, x_arg, to_arg, call)
+}
+
+#' @export
+vec_cast.decimal.character <- function(
+  x,
+  to,
+  ...,
+  x_arg = "",
+  to_arg = "",
+  call = rlang::caller_env()
+) {
+  decimal_cast_scale(decimal_from_character(x), x, to, x_arg, to_arg, call)
 }
 
 #' @export
@@ -917,6 +988,16 @@ decimal_check_parallel_extrema <- function(scale, frame) {
   vctrs::vec_assign(x, i, value)
 }
 
+# The `vctrs_vctr` method casts `value` to the type of `x`, which would round a
+# finer value. Widen both to the common scale first, as `[<-` does.
+#' @export
+`[[<-.decimal` <- function(x, ..., value) {
+  ptype <- vctrs::vec_ptype_common(x, value)
+  x <- vctrs::vec_cast(x, ptype)
+  value <- vctrs::vec_cast(value, ptype)
+  NextMethod()
+}
+
 # `match()`, `%in%` and base `merge()` compare what `mtfrm()` returns. The
 # default, `as.character()`, keeps each vector's scale, so 2.5 did not match
 # 2.50 although `==` held. The equality proxy depends on the value alone, so it
@@ -1061,12 +1142,17 @@ vec_proxy_compare.decimal <- function(x, ...) {
   )
 }
 
+# The byte key above orders by value only under C-locale comparison, which
+# `vec_compare()` and `vec_rank()` use. `vec_order()` and `vec_sort()` call
+# base `order()` on the proxy, which collates text in the session locale, and
+# `.locale` in dplyr collates it with ICU; both misplaced negatives. Dense
+# ranks of the key, computed in the C locale, are integers that no collation
+# touches. They order only the elements given, which is all this proxy is used
+# for: vctrs proxies both sides of a join together.
 #' @export
 vec_proxy_order.decimal <- function(x, ...) {
-  decimal_restore_names(
-    .decimal_order_proxy_strings(vctrs::vec_data(x)),
-    names(x)
-  )
+  key <- .decimal_order_proxy_strings(vctrs::vec_data(x))
+  vctrs::vec_rank(key, ties = "dense", incomplete = "na")
 }
 
 #' @export
